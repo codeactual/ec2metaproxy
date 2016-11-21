@@ -1,3 +1,5 @@
+.PHONY: build install autolint clean
+
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 ROOT_DIR = $(shell pwd)
 SHELL = bash # for `time`
