@@ -1,37 +1,31 @@
-PROJECT_ROOT:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
-PROJECT_PACKAGE=github.com/dump247/ec2metaproxy
+THIS_FILE := $(lastword $(MAKEFILE_LIST))
+ROOT_DIR = $(shell pwd)
+SHELL = bash # for `time`
+GIT_REF_SHA=$(shell git rev-parse --short HEAD)
+CMDS=$(shell ls cmd)
+GIT_REF_LABEL=$(shell git symbolic-ref -q --short HEAD || git describe --tags --exact-match)
+GIT_DIRTY=$(shell git diff-index --quiet HEAD; echo $$? | sed 's/1/-dirty/' | sed 's/0//')
+BUILD_TIME=$(shell date +%FT%T%z)
+PKG_PATH=git.codeactual.com/codeactual/ec2metaproxy
+LDFLAGS=-ldflags "-X ${PKG_PATH}/version.SCM=${GIT_REF_SHA}-${GIT_REF_LABEL}${GIT_DIRTY} -X ${PKG_PATH}/version.BuildTime=${BUILD_TIME}"
 
-DOCKER_IMAGE=dump247/ec2metaproxy
+precheck:
+ifneq ($(CGO_ENABLED),0)
+	$(error precheck: CGO_ENABLED is not 0 in environment)
+endif
 
-GO15VENDOREXPERIMENT=1
+build:
+	@mkdir -p build
+	@go build ${LDFLAGS} -v -o build/ec2metaproxy
 
-SRC_DIRS=${PROJECT_PACKAGE}
-CMD_DIRS=${PROJECT_PACKAGE}
+install:
+	@# Reenable cgo to avoid file permission issues.
+	@CGO_ENABLED=1 go install ${LDFLAGS} .
 
-.PHONY: clean build test compile fmt docker-image
-
-build: fmt lint test compile
-
-compile:
-	go install ${CMD_DIRS}
-
-test:
-	go test ${SRC_DIRS}
-
-lint:
-	golint ${SRC_DIRS}
-
-fmt:
-	go fmt ${SRC_DIRS}
+autolint:
+	@reflex -c reflex.conf
 
 clean:
-	go clean -i ${SRC_DIRS}
+	@go clean -i
 
-docker-image: clean
-	docker pull dump247/ec2metaproxy-build
-	docker run --rm -v ${GOPATH}:/go -w=/go/src/${PROJECT_PACKAGE} dump247/ec2metaproxy-build make
-	@cp ${PROJECT_ROOT}/Dockerfile ${GOPATH}/bin/
-	docker build -t ${DOCKER_IMAGE} ${GOPATH}/bin/
-
-push-docker-image: docker-image
-	docker push ${DOCKER_IMAGE}
+-include precheck
