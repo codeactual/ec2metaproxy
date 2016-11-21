@@ -4,8 +4,7 @@ containers.
 
 The following container platforms are supported:
 
-* [docker](https://www.docker.com)
-* [flynn](https://flynn.io)
+- [docker](https://www.docker.com)
 
 At this point, the only endpoint overridden is the security credentials. This allows
 for different containers to have different IAM permissions and not just use the permissions
@@ -30,7 +29,7 @@ for the containers.
 
 See:
 
-* [Host Setup](docs/host-setup.md)
+- [Host Setup](docs/host-setup.md)
 
 ## Containers
 
@@ -40,8 +39,18 @@ a container can be configured to use a separate IAM role or provide an IAM polic
 
 See:
 
-* [Docker Container Setup](docs/docker-container-setup.md)
-* [Flynn Container Setup](docs/flynn-container-setup.md)
+- [Docker Container Setup](docs/docker-container-setup.md)
+
+# Fork Notes
+
+Goals of this fork:
+
+- Adopt a different way to map containers to the roles they assume:
+  - Use a JSON config file instead of environment variable injection at `docker run`.
+  - Map custom aliases to role ARNs in the config file.
+  - Use docker's built-in object labels to store the aliases.
+- Reduce dependencies in favor of `log`, `flag`, and the official docker client package.
+- Remove `flynn` support.
 
 # License
 
