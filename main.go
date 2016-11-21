@@ -4,60 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
+)
 
-	"github.com/alecthomas/kingpin"
-	"github.com/aws/aws-sdk-go/aws/session"
-	log "github.com/cihub/seelog"
+const (
+	defaultMetadataURL = "http://169.254.169.254"
+	defaultListenAddr  = ":18000"
 )
 
 var (
-	credsRegex = regexp.MustCompile("^/(.+?)/meta-data/iam/security-credentials/(.*)$")
-
 	instanceServiceClient = &http.Transport{}
-)
-
-var (
-	defaultIamRole = roleArnOpt(kingpin.
-			Flag("default-iam-role", "ARN of the role to use if the container does not specify a role.").
-			Short('r'))
-
-	defaultIamPolicy = kingpin.
-				Flag("default-iam-policy", "Default IAM policy to apply if the container does not provide a custom role/policy.").
-				Default("").
-				String()
-
-	metadataURL = kingpin.
-			Flag("metadata-url", "URL of the real EC2 metadata service.").
-			Default("http://169.254.169.254").
-			String()
-
-	serverAddr = kingpin.
-			Flag("server", "Interface and port to bind the server to.").
-			Default(":18000").
-			Short('s').
-			String()
-
-	verbose = kingpin.
-		Flag("verbose", "Enable verbose output.").
-		Bool()
-
-	dockerCommand = kingpin.Command("docker", "Run proxy for docker container manager.")
-
-	dockerEndpoint = dockerCommand.
-			Flag("docker-endpoint", "Endpoint to communicate with the docker daemon.").
-			Default("unix:///var/run/docker.sock").
-			String()
-
-	flynnCommand = kingpin.Command("flynn", "Run proxy for flynn container manager.")
-
-	flynnEndpoint = flynnCommand.
-			Flag("flynn-endpoint", "Endpoint to communicate with the flynn host.").
-			Default("http://127.0.0.1:1113").
-			String()
 )
 
 type metadataCredentials struct {
@@ -82,31 +41,6 @@ func copyHeaders(dst, src http.Header) {
 	}
 }
 
-func configureLogging(verbose bool) {
-	minLevel := "info"
-
-	if verbose {
-		minLevel = "trace"
-	}
-
-	logger, err := log.LoggerFromConfigAsString(fmt.Sprintf(`
-<seelog minlevel="%s">
-    <outputs formatid="out">
-        <console />
-    </outputs>
-    <formats>
-        <format id="out" format="%%Date %%Time [%%LEVEL] %%Msg%%n" />
-    </formats>
-</seelog>
-`, minLevel))
-
-	if err != nil {
-		panic(err)
-	}
-
-	log.ReplaceLogger(logger)
-}
-
 func remoteIP(addr string) string {
 	index := strings.Index(addr, ":")
 
@@ -116,44 +50,6 @@ func remoteIP(addr string) string {
 
 	return addr[:index]
 }
-
-type logResponseWriter struct {
-	Wrapped http.ResponseWriter
-	Status  int
-}
-
-func (t *logResponseWriter) Header() http.Header {
-	return t.Wrapped.Header()
-}
-
-func (t *logResponseWriter) Write(d []byte) (int, error) {
-	return t.Wrapped.Write(d)
-}
-
-func (t *logResponseWriter) WriteHeader(s int) {
-	t.Wrapped.WriteHeader(s)
-	t.Status = s
-}
-
-func logHandler(handler func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		logWriter := &logResponseWriter{w, 200}
-
-		defer func() {
-			if e := recover(); e != nil {
-				log.Critical("Panic in request handler: ", e)
-				logWriter.WriteHeader(http.StatusInternalServerError)
-			}
-
-			elapsed := time.Since(start)
-			log.Infof("%s \"%s %s %s\" %d %s", remoteIP(r.RemoteAddr), r.Method, r.URL.Path, r.Proto, logWriter.Status, elapsed)
-		}()
-
-		handler(logWriter, r)
-	}
-}
-
 func newGET(path string) *http.Request {
 	r, err := http.NewRequest("GET", path, nil)
 
@@ -168,12 +64,17 @@ func handleCredentials(baseURL, apiVersion, subpath string, c *credentialsProvid
 	resp, err := instanceServiceClient.RoundTrip(newGET(baseURL + "/" + apiVersion + "/meta-data/iam/security-credentials/"))
 
 	if err != nil {
-		log.Error("Error requesting creds path for API version ", apiVersion, ": ", err)
+		log.Printf("Error requesting creds path for API version [%s]: %+v", apiVersion, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	resp.Body.Close()
+	err = resp.Body.Close()
+	if err != nil {
+		log.Printf("Error closing credentials response body: %+v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		w.WriteHeader(resp.StatusCode)
@@ -184,7 +85,7 @@ func handleCredentials(baseURL, apiVersion, subpath string, c *credentialsProvid
 	credentials, err := c.CredentialsForIP(clientIP)
 
 	if err != nil {
-		log.Error(clientIP, " ", err)
+		log.Printf("failed to get credentials for IP [%s]: %+v", clientIP, err)
 		http.Error(w, "An unexpected error getting container role", http.StatusInternalServerError)
 		return
 	}
@@ -210,7 +111,7 @@ func handleCredentials(baseURL, apiVersion, subpath string, c *credentialsProvid
 		})
 
 		if err != nil {
-			log.Error("Error marshaling credentials: ", err)
+			log.Printf("Error marshaling credentials: %+v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		} else {
 			w.Write(creds)
@@ -218,45 +119,24 @@ func handleCredentials(baseURL, apiVersion, subpath string, c *credentialsProvid
 	}
 }
 
-func newContainerService(platform string) (containerService, error) {
-	switch platform {
-	case "docker":
-		return newDockerContainerService(*dockerEndpoint)
-	case "flynn":
-		return newFlynnContainerService(*flynnEndpoint)
-	default:
-		return nil, fmt.Errorf("Unknown container platform: %s", platform)
-	}
-}
-
 func main() {
-	kingpin.CommandLine.Help = "Docker container EC2 metadata service."
-	command := kingpin.Parse()
-
-	defer log.Flush()
-	configureLogging(*verbose)
-
-	platform, err := newContainerService(command)
-
-	if err != nil {
-		panic(err)
-	}
-
-	awsSession := session.New()
-	credentials := newCredentialsProvider(awsSession, platform, *defaultIamRole, *defaultIamPolicy)
+	//platform := newDockerContainerService("unix:///var/run/main-docker.sock")
+	//awsSession := session.New()
+	//credentials := newCredentialsProvider(awsSession, platform, *defaultIamRole, *defaultIamPolicy)
+	//credsRegex := regexp.MustCompile("^/(.+?)/meta-data/iam/security-credentials/(.*)$")
 
 	// Proxy non-credentials requests to primary metadata service
-	http.HandleFunc("/", logHandler(func(w http.ResponseWriter, r *http.Request) {
-		match := credsRegex.FindStringSubmatch(r.URL.Path)
-		if match != nil {
-			handleCredentials(*metadataURL, match[1], match[2], credentials, w, r)
-			return
-		}
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// match := credsRegex.FindStringSubmatch(r.URL.Path)
+		// if match != nil {
+		// handleCredentials(*metadataURL, match[1], match[2], credentials, w, r)
+		// return
+		// }
 
-		proxyReq, err := http.NewRequest(r.Method, fmt.Sprintf("%s%s", *metadataURL, r.URL.Path), r.Body)
+		proxyReq, err := http.NewRequest(r.Method, fmt.Sprintf("%s%s", defaultMetadataURL, r.URL.Path), r.Body)
 
 		if err != nil {
-			log.Error("Error creating proxy http request: ", err)
+			log.Printf("Error creating proxy http request: %+v", err)
 			http.Error(w, "An unexpected error occurred communicating with Amazon", http.StatusInternalServerError)
 			return
 		}
@@ -265,7 +145,7 @@ func main() {
 		resp, err := instanceServiceClient.RoundTrip(proxyReq)
 
 		if err != nil {
-			log.Error("Error forwarding request to EC2 metadata service: ", err)
+			log.Printf("Error forwarding request to EC2 metadata service: %+v", err)
 			http.Error(w, "An unexpected error occurred communicating with Amazon", http.StatusInternalServerError)
 			return
 		}
@@ -275,10 +155,9 @@ func main() {
 		copyHeaders(w.Header(), resp.Header)
 		w.WriteHeader(resp.StatusCode)
 		if _, err := io.Copy(w, resp.Body); err != nil {
-			log.Warn("Error copying response content from EC2 metadata service: ", err)
+			log.Printf("Error copying response content from EC2 metadata service: %+v", err)
 		}
-	}))
+	})
 
-	log.Info("Listening on ", *serverAddr)
-	log.Critical(http.ListenAndServe(*serverAddr, nil))
+	http.ListenAndServe(defaultListenAddr, nil)
 }
