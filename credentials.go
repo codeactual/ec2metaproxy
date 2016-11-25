@@ -86,18 +86,18 @@ func (c *credentialsProvider) CredentialsForIP(containerIP string) (credentials,
 	oldCredentials, found := c.containerCredentials[containerIP]
 
 	if !found || !oldCredentials.IsValid(container) {
-		roleArn := container.IamRole
+		arn := container.IamRole
 		iamPolicy := container.IamPolicy
 
-		if roleArn.Empty() {
-			roleArn = c.defaultIamRoleArn
+		if arn.Empty() {
+			arn = c.defaultIamRoleArn
 
 			if len(iamPolicy) == 0 {
 				iamPolicy = c.defaultIamPolicy
 			}
 		}
 
-		role, err := c.AssumeRole(roleArn, iamPolicy, generateSessionName(c.container.TypeName(), container.ID))
+		role, err := c.AssumeRole(arn, iamPolicy, generateSessionName(c.container.TypeName(), container.ID))
 
 		if err != nil {
 			return credentials{}, err
@@ -110,7 +110,7 @@ func (c *credentialsProvider) CredentialsForIP(containerIP string) (credentials,
 	return oldCredentials.credentials, nil
 }
 
-func (c *credentialsProvider) AssumeRole(roleArn roleArn, iamPolicy, sessionName string) (credentials, error) {
+func (c *credentialsProvider) AssumeRole(role roleArn, iamPolicy, sessionName string) (credentials, error) {
 	var policy *string
 
 	if len(iamPolicy) > 0 {
@@ -120,7 +120,7 @@ func (c *credentialsProvider) AssumeRole(roleArn roleArn, iamPolicy, sessionName
 	resp, err := c.awsSts.AssumeRole(&sts.AssumeRoleInput{
 		DurationSeconds: aws.Int64(3600), // Max is 1 hour
 		Policy:          policy,
-		RoleArn:         aws.String(roleArn.String()),
+		RoleArn:         aws.String(role.String()),
 		RoleSessionName: aws.String(sessionName),
 	})
 
@@ -134,7 +134,7 @@ func (c *credentialsProvider) AssumeRole(roleArn roleArn, iamPolicy, sessionName
 		Token:       *resp.Credentials.SessionToken,
 		Expiration:  *resp.Credentials.Expiration,
 		GeneratedAt: time.Now(),
-		RoleArn:     roleArn,
+		RoleArn:     role,
 	}, nil
 }
 

@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"regexp"
-	"time"
 )
 
 var (
@@ -49,19 +48,4 @@ func (r roleArn) Empty() bool {
 
 func (r roleArn) Equals(other roleArn) bool {
 	return r.value == other.value
-}
-
-type roleCredentials struct {
-	AccessKey  string
-	SecretKey  string
-	Token      string
-	Expiration time.Time
-}
-
-func (t *roleCredentials) ExpiredNow() bool {
-	return t.ExpiredAt(time.Now())
-}
-
-func (t *roleCredentials) ExpiredAt(at time.Time) bool {
-	return at.After(t.Expiration)
 }

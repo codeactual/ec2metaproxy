@@ -2,20 +2,29 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws/session"
 )
 
 const (
 	defaultMetadataURL = "http://169.254.169.254"
 	defaultListenAddr  = ":18000"
+	labelKey           = "ec2metaproxy.RoleAlias"
+	policyKey          = "ec2metaproxy.Policy"
 )
 
 var (
+	credsRegex = regexp.MustCompile("^/(.+?)/meta-data/iam/security-credentials/(.*)$")
+
 	instanceServiceClient = &http.Transport{}
 )
 
@@ -49,7 +58,9 @@ func remoteIP(addr string) string {
 	}
 
 	return addr[:index]
+
 }
+
 func newGET(path string) *http.Request {
 	r, err := http.NewRequest("GET", path, nil)
 
@@ -119,19 +130,62 @@ func handleCredentials(baseURL, apiVersion, subpath string, c *credentialsProvid
 	}
 }
 
+// ProxyConfig describes the JSON config file selected via `-config` flag.
+type ProxyConfig struct {
+	// AliasToARN maps human-friendly names to IAM ARNs.
+	AliasToARN map[string]string `json:"aliasToARN"`
+	// DefaultAlias is a AliasToARN key to select the default role for containers whose
+	// metadata does not specify one.
+	DefaultAlias string `json:"defaultAlias"`
+	// DefaultPolicy restricts the effective role's permissions to the intersection of
+	// the role's policy and this JSON policy.
+	DefaultPolicy string `json:"defaultPolicy"`
+	// DockerHost is a valid DOCKER_HOST string.
+	DockerHost string `json:"dockerHost"`
+}
+
+var proxyConfig ProxyConfig
+var verbose bool
+
 func main() {
-	//platform := newDockerContainerService("unix:///var/run/main-docker.sock")
-	//awsSession := session.New()
-	//credentials := newCredentialsProvider(awsSession, platform, *defaultIamRole, *defaultIamPolicy)
-	//credsRegex := regexp.MustCompile("^/(.+?)/meta-data/iam/security-credentials/(.*)$")
+	proxyConfig = ProxyConfig{}
+
+	var configFile string
+	flag.StringVar(&configFile, "c", "", "Path to JSON config file.")
+	flag.BoolVar(&verbose, "v", false, "Print verbose console messages.")
+	flag.Parse()
+
+	configBytes, readErr := ioutil.ReadFile(configFile)
+	if readErr != nil {
+		panic(readErr)
+	}
+	jsonErr := json.Unmarshal(configBytes, &proxyConfig)
+	if jsonErr != nil {
+		panic(jsonErr)
+	}
+
+	defaultIamRole, roleErr := newRoleArn(proxyConfig.AliasToARN[proxyConfig.DefaultAlias])
+	if roleErr != nil {
+		panic(roleErr)
+	}
+
+	platform, platformErr := newDockerContainerService(proxyConfig.DockerHost)
+	if platformErr != nil {
+		panic(platformErr)
+	}
+
+	awsSession := session.New()
+	credentials := newCredentialsProvider(awsSession, platform, defaultIamRole, proxyConfig.DefaultPolicy)
 
 	// Proxy non-credentials requests to primary metadata service
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// match := credsRegex.FindStringSubmatch(r.URL.Path)
-		// if match != nil {
-		// handleCredentials(*metadataURL, match[1], match[2], credentials, w, r)
-		// return
-		// }
+		log.Printf("Client [%s] request [%s]", remoteIP(r.RemoteAddr), r.URL.Path)
+
+		match := credsRegex.FindStringSubmatch(r.URL.Path)
+		if match != nil {
+			handleCredentials(defaultMetadataURL, match[1], match[2], credentials, w, r)
+			return
+		}
 
 		proxyReq, err := http.NewRequest(r.Method, fmt.Sprintf("%s%s", defaultMetadataURL, r.URL.Path), r.Body)
 
@@ -159,5 +213,16 @@ func main() {
 		}
 	})
 
-	http.ListenAndServe(defaultListenAddr, nil)
+	listenErr := http.ListenAndServe(defaultListenAddr, nil)
+	if listenErr == nil {
+		log.Printf("listening on address [%s]\n", defaultListenAddr)
+	} else {
+		log.Fatalf("failed to listen on address [%s]: %+v\n", defaultListenAddr, listenErr)
+	}
+}
+
+func verbosef(format string, a ...interface{}) {
+	if verbose {
+		log.Printf(format, a...)
+	}
 }

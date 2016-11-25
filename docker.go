@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
-	log "github.com/cihub/seelog"
-	"github.com/fsouza/go-dockerclient"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
 )
+
+const runningState = "running"
 
 type dockerContainerInfo struct {
 	containerInfo
@@ -16,11 +19,14 @@ type dockerContainerInfo struct {
 
 type dockerContainerService struct {
 	containerIPMap map[string]dockerContainerInfo
-	docker         *docker.Client
+	docker         *client.Client
 }
 
 func newDockerContainerService(endpoint string) (*dockerContainerService, error) {
-	client, err := docker.NewClient(endpoint)
+	c, err := client.NewEnvClient()
+	if err != nil {
+		panic(err)
+	}
 
 	if err != nil {
 		return nil, err
@@ -28,7 +34,7 @@ func newDockerContainerService(endpoint string) (*dockerContainerService, error)
 
 	return &dockerContainerService{
 		containerIPMap: make(map[string]dockerContainerInfo),
-		docker:         client,
+		docker:         c,
 	}, nil
 }
 
@@ -55,14 +61,13 @@ func (d *dockerContainerService) ContainerForIP(containerIP string) (containerIn
 }
 
 func (d *dockerContainerService) syncContainer(containerIP string, oldInfo dockerContainerInfo, now time.Time) (dockerContainerInfo, bool) {
-	log.Debug("Inspecting container: ", oldInfo.ID)
-	container, err := d.docker.InspectContainer(oldInfo.ID)
-
-	if err != nil || !container.State.Running {
-		if _, ok := err.(*docker.NoSuchContainer); ok {
-			log.Debug("Container not found, refreshing container info: ", oldInfo.ID)
+	verbosef("Inspecting container: [%s]", oldInfo.ID)
+	container, err := d.docker.ContainerInspect(context.Background(), oldInfo.ID)
+	if err != nil || container.State.Status != runningState {
+		if client.IsErrContainerNotFound(err) {
+			verbosef("Container not found, refreshing container info [%s]", oldInfo.ID)
 		} else {
-			log.Warn("Error inspecting container, refreshing container info: ", oldInfo.ID, ": ", err)
+			verbosef("Error inspecting container, refreshing container info [%s]: %+v", oldInfo.ID, err)
 		}
 
 		d.syncContainers(now)
@@ -76,65 +81,58 @@ func (d *dockerContainerService) syncContainer(containerIP string, oldInfo docke
 }
 
 func (d *dockerContainerService) syncContainers(now time.Time) {
-	log.Info("Synchronizing state with running docker containers")
-	apiContainers, err := d.docker.ListContainers(docker.ListContainersOptions{
-		All:    false, // only running containers
-		Size:   false, // do not need size information
-		Limit:  0,     // all running containers
-		Since:  "",    // not applicable
-		Before: "",    // not applicable
-	})
-
+	verbosef("Synchronizing state with running docker containers")
+	apiContainers, err := d.docker.ContainerList(context.Background(), types.ContainerListOptions{})
 	if err != nil {
-		log.Error("Error listing running containers: ", err)
+		verbosef("Error listing running containers: %=v", err)
 		return
 	}
 
 	refreshAt := refreshTime(now)
 	containerIPMap := make(map[string]dockerContainerInfo)
 
-	for _, apiContainer := range apiContainers {
-		container, err := d.docker.InspectContainer(apiContainer.ID)
-
-		if err != nil {
-			if _, ok := err.(*docker.NoSuchContainer); ok {
-				log.Debug("Container not found: ", apiContainer.ID)
-			} else {
-				log.Warn("Error inspecting container: ", apiContainer.ID, ": ", err)
-			}
-
+	for _, container := range apiContainers {
+		if container.State != runningState {
+			continue
+		}
+		alias, ok := container.Labels[labelKey]
+		if !ok {
 			continue
 		}
 
 		var containerIPs []string
-		if container.NetworkSettings.IPAddress != "" {
-			containerIPs = append(containerIPs, container.NetworkSettings.IPAddress)
-		}
-		for _, network := range container.NetworkSettings.Networks {
-			containerIPs = append(containerIPs, network.IPAddress)
+		for netName, net := range container.NetworkSettings.Networks {
+			if net.IPAddress != "" {
+				containerIPs = append(containerIPs, net.IPAddress)
+				verbosef("collectContainerIP: id [%s] name %v net [%s] ip [%s] alias [%s]\n", container.ID[:10], container.Names, netName, net.IPAddress, alias)
+			}
 		}
 
 		if len(containerIPs) == 0 {
-			log.Error("No IP addresses discovered for container: ", apiContainer.ID)
+			verbosef("No IP addresses discovered for container [%s]", container.ID)
 			continue
 		}
 
-		roleArn, iamPolicy, err := getRoleArnFromEnv(container.Config.Env)
-
-		if err != nil {
-			log.Error("Error getting role from container: ", apiContainer.ID, ": ", err)
+		roleName, ok := proxyConfig.AliasToARN[alias]
+		if !ok {
+			verbosef("Container [%s] %v has an unmapped role alias [%s]", container.ID, container.Names, alias)
+			continue
+		}
+		role, roleErr := newRoleArn(roleName)
+		if roleErr != nil {
+			verbosef("failed to create new role ARN with invalid name [%s]: %+v", role, roleErr)
 			continue
 		}
 
 		for _, ipAddress := range containerIPs {
-			log.Infof("Container: id=%s ip=%s image=%s role=%s", container.ID[:6], ipAddress, container.Config.Image, roleArn)
+			verbosef("Container: id [%s] ip [%s] image [%s] role [%s]", container.ID[:6], ipAddress, container.Image, role)
 
 			containerIPMap[ipAddress] = dockerContainerInfo{
 				containerInfo: containerInfo{
 					ID:        container.ID,
-					Name:      container.Name,
-					IamRole:   roleArn,
-					IamPolicy: iamPolicy,
+					Name:      strings.Join(container.Names, ","),
+					IamRole:   role,
+					IamPolicy: container.Labels[policyKey],
 				},
 				RefreshTime: refreshAt,
 			}
@@ -146,26 +144,4 @@ func (d *dockerContainerService) syncContainers(now time.Time) {
 
 func refreshTime(now time.Time) time.Time {
 	return now.Add(1 * time.Second)
-}
-
-func getRoleArnFromEnv(env []string) (role roleArn, policy string, err error) {
-	for _, e := range env {
-		v := strings.SplitN(e, "=", 2)
-
-		if v[0] == "IAM_ROLE" && len(v) > 1 {
-			roleArn := strings.TrimSpace(v[1])
-
-			if len(roleArn) > 0 {
-				role, err = newRoleArn(roleArn)
-
-				if err != nil {
-					return
-				}
-			}
-		} else if v[0] == "IAM_POLICY" && len(v) > 1 {
-			policy = strings.TrimSpace(v[1])
-		}
-	}
-
-	return
 }
