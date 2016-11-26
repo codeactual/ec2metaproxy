@@ -10,12 +10,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync/atomic"
 )
 
-const requestIDKey = "ec2metaproxyReqID"
+const (
+	requestIDContextKey = "ec2metaproxyReqID"
+	requestIDHeaderKey  = "X-EC2Metaproxy-ID"
+)
 
 var reqIDPrefix string
 var reqID uint64
@@ -39,10 +41,6 @@ than a millionth of a percent chance of generating two colliding IDs.
 */
 
 func init() {
-	hostname, err := os.Hostname()
-	if hostname == "" || err != nil {
-		hostname = "localhost"
-	}
 	var buf [12]byte
 	var b64 string
 	for len(b64) < 10 {
@@ -53,19 +51,19 @@ func init() {
 		b64 = base64.StdEncoding.EncodeToString(buf[:])
 		b64 = strings.NewReplacer("+", "", "/", "").Replace(b64)
 	}
-	reqIDPrefix = fmt.Sprintf("%s/%s", hostname, b64[0:10])
+	reqIDPrefix = b64[0:10]
 }
 
 func newContextWithRequestID(ctx context.Context, req *http.Request) context.Context {
-	id := req.Header.Get("x-ec2metaproxy-id")
+	id := req.Header.Get(requestIDHeaderKey)
 	if id == "" {
 		id = fmt.Sprintf("%s-%06d", reqIDPrefix, atomic.AddUint64(&reqID, 1))
 	}
-	return context.WithValue(ctx, requestIDKey, id)
+	return context.WithValue(ctx, requestIDContextKey, id)
 }
 
 func requestIDFromContext(ctx context.Context) string {
-	return ctx.Value(requestIDKey).(string)
+	return ctx.Value(requestIDContextKey).(string)
 }
 
 // RequestID is a middleware that injects a request ID into the context of each
@@ -76,6 +74,7 @@ func requestIDFromContext(ctx context.Context) string {
 func RequestID(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := newContextWithRequestID(r.Context(), r)
+		w.Header().Set(requestIDHeaderKey, requestIDFromContext(ctx))
 		h.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
