@@ -38,19 +38,19 @@ func New(logger *log.Logger) (*Proxy, error) {
 		logger = log.New(new(NopWriter), "", log.LstdFlags)
 	}
 
-	config, configErr := NewConfigFromFlag()
-	if configErr != nil {
-		return nil, configErr
+	config, err := NewConfigFromFlag()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to configure the proxy")
 	}
 
-	defaultIamRole, roleErr := newRoleArn(config.AliasToARN[config.DefaultAlias])
-	if roleErr != nil {
-		panic(roleErr)
+	defaultIamRole, err := newRoleArn(config.AliasToARN[config.DefaultAlias])
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to configure the proxy")
 	}
 
-	platform, platformErr := newDockerContainerService(config.DockerHost, config.AliasToARN, logger)
-	if platformErr != nil {
-		panic(platformErr)
+	platform, err := newDockerContainerService(config.DockerHost, config.AliasToARN, logger)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create proxy's container service")
 	}
 
 	p := Proxy{
@@ -59,6 +59,7 @@ func New(logger *log.Logger) (*Proxy, error) {
 		log:           logger,
 		config:        config,
 	}
+
 	return &p, nil
 }
 
@@ -98,7 +99,16 @@ func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *credentialsProvider, w http.ResponseWriter, r *http.Request) {
-	resp, err := p.httpClient.RoundTrip(newGET(baseURL + "/" + apiVersion + "/meta-data/iam/security-credentials/"))
+	awsURL := baseURL + "/" + apiVersion + "/meta-data/iam/security-credentials/"
+
+	awsReq, err := http.NewRequest("GET", awsURL, nil)
+	if err != nil {
+		log.Printf("Error creating request [%s]: %+v", awsURL, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := p.httpClient.RoundTrip(awsReq)
 
 	if err != nil {
 		log.Printf("Error requesting creds path for API version [%s]: %+v", apiVersion, err)

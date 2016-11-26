@@ -27,13 +27,3 @@ func remoteIP(addr string) string {
 	return addr[:index]
 
 }
-
-func newGET(path string) *http.Request {
-	r, err := http.NewRequest("GET", path, nil)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return r
-}

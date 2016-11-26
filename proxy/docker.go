@@ -2,13 +2,13 @@ package proxy
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
+	"github.com/pkg/errors"
 )
 
 const runningState = "running"
@@ -28,13 +28,8 @@ type dockerContainerService struct {
 func newDockerContainerService(endpoint string, aliasToARN map[string]string, logger *log.Logger) (*dockerContainerService, error) {
 	c, err := client.NewEnvClient()
 	if err != nil {
-		panic(err)
+		return nil, errors.Wrapf(err, "failed to create docker client with endpoint [%s]", endpoint)
 	}
-
-	if err != nil {
-		return nil, err
-	}
-
 	return &dockerContainerService{
 		aliasToARN:     aliasToARN,
 		containerIPMap: make(map[string]dockerContainerInfo),
@@ -59,7 +54,7 @@ func (d *dockerContainerService) ContainerForIP(containerIP string) (containerIn
 	}
 
 	if !found {
-		return containerInfo{}, fmt.Errorf("No container found for IP %s", containerIP)
+		return containerInfo{}, errors.Errorf("No container found for IP %s", containerIP)
 	}
 
 	return info.containerInfo, nil

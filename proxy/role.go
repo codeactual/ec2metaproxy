@@ -1,8 +1,9 @@
 package proxy
 
 import (
-	"errors"
 	"regexp"
+
+	"github.com/pkg/errors"
 )
 
 var (
