@@ -45,12 +45,12 @@ func New(config Config, logger *log.Logger) (*Proxy, error) {
 
 	defaultIamRole, err := newRoleArn(config.AliasToARN[config.DefaultAlias])
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to configure the proxy")
+		return nil, errors.Wrap(err, "Error configuring proxy")
 	}
 
 	platform, err := newDockerContainerService(config.DockerHost, config.AliasToARN, logger)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create proxy's container service")
+		return nil, errors.Wrap(err, "Error creating proxy's container service")
 	}
 
 	p := Proxy{
@@ -66,8 +66,6 @@ func New(config Config, logger *log.Logger) (*Proxy, error) {
 // HandleUnmatched can be used to handle "/" requests and will delegate to HandleCredentials
 // to produce a response.
 func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
-	p.log.Printf("Client [%s] request [%s]", remoteIP(r.RemoteAddr), r.URL.Path)
-
 	match := credsRegex.FindStringSubmatch(r.URL.Path)
 	if match != nil {
 		p.HandleCredentials(MetadataURL, match[1], match[2], p.credsProvider, w, r)
@@ -77,7 +75,7 @@ func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 	proxyReq, err := http.NewRequest(r.Method, fmt.Sprintf("%s%s", MetadataURL, r.URL.Path), r.Body)
 
 	if err != nil {
-		p.log.Printf("Error creating proxy http request: %+v", err)
+		p.log.Printf("HandleUnmatched: Error creating proxy http request: %+v", err)
 		http.Error(w, "An unexpected error occurred communicating with Amazon", http.StatusInternalServerError)
 		return
 	}
@@ -86,7 +84,7 @@ func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 	resp, err := p.httpClient.RoundTrip(proxyReq)
 
 	if err != nil {
-		p.log.Printf("Error forwarding request to EC2 metadata service: %+v", err)
+		p.log.Printf("HandleUnmatched: Error forwarding request to EC2 metadata service: %+v", err)
 		http.Error(w, "An unexpected error occurred communicating with Amazon", http.StatusInternalServerError)
 		return
 	}
@@ -94,14 +92,14 @@ func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		closeErr := resp.Body.Close()
 		if closeErr != nil {
-			p.log.Printf("Error closing respond body: %+v", closeErr)
+			p.log.Printf("HandleUnmatched: Error closing respond body: %+v", closeErr)
 		}
 	}()
 
 	copyHeaders(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		p.log.Printf("Error copying response content from EC2 metadata service: %+v", err)
+		p.log.Printf("HandleUnmatched: Error copying response content from EC2 metadata service: %+v", err)
 	}
 }
 
@@ -111,7 +109,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 
 	awsReq, err := http.NewRequest("GET", awsURL, nil)
 	if err != nil {
-		p.log.Printf("Error creating request [%s]: %+v", awsURL, err)
+		p.log.Printf("HandleCredentials: Error creating request [%s]: %+v", awsURL, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -119,14 +117,14 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	resp, err := p.httpClient.RoundTrip(awsReq)
 
 	if err != nil {
-		p.log.Printf("Error requesting creds path for API version [%s]: %+v", apiVersion, err)
+		p.log.Printf("HandleCredentials: Error requesting creds path for API version [%s]: %+v", apiVersion, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	err = resp.Body.Close()
 	if err != nil {
-		p.log.Printf("Error closing credentials response body: %+v", err)
+		p.log.Printf("HandleCredentials: Error closing credentials response body: %+v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -140,7 +138,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	credentials, err := c.CredentialsForIP(clientIP)
 
 	if err != nil {
-		p.log.Printf("failed to get credentials for IP [%s]: %+v", clientIP, err)
+		p.log.Printf("HandleCredentials: Error getting credentials for IP [%s]: %+v", clientIP, err)
 		http.Error(w, "An unexpected error getting container role", http.StatusInternalServerError)
 		return
 	}
@@ -150,7 +148,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	if len(subpath) == 0 {
 		_, writeErr := w.Write([]byte(roleName))
 		if writeErr != nil {
-			p.log.Printf("Error writing role name to response: %+v", writeErr)
+			p.log.Printf("HandleCredentials: Error writing role name to response: %+v", writeErr)
 		}
 	} else if !strings.HasPrefix(subpath, roleName) || (len(subpath) > len(roleName) && subpath[len(roleName)-1] != '/') {
 		// An idiosyncrasy of the standard EC2 metadata service:
@@ -169,12 +167,12 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		})
 
 		if err != nil {
-			p.log.Printf("Error marshaling credentials: %+v", err)
+			p.log.Printf("HandleCredentials: Error marshaling credentials: %+v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		} else {
 			_, writeErr := w.Write(creds)
 			if writeErr != nil {
-				p.log.Printf("Error writing credentials to response: %+v", writeErr)
+				p.log.Printf("HandleCredentials: Error writing credentials to response: %+v", writeErr)
 			}
 		}
 	}
@@ -186,7 +184,7 @@ func (p *Proxy) Listen() error {
 	if err == nil {
 		p.log.Printf("listening on address [%s]", p.config.ListenAddr)
 	} else {
-		return errors.Wrapf(err, "failed to listen on address [%s]", p.config.ListenAddr)
+		return errors.Wrapf(err, "Error listening on address [%s]", p.config.ListenAddr)
 	}
 	return nil
 }

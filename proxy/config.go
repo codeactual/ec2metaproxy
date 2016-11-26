@@ -34,11 +34,11 @@ func NewConfigFromFlag() (c Config, err error) {
 
 	configBytes, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		return c, errors.Wrapf(err, "failed to read config file [%s]", configFile)
+		return c, errors.Wrapf(err, "Error reading config file [%s]", configFile)
 	}
 	err = json.Unmarshal(configBytes, &c)
 	if err != nil {
-		return c, errors.Wrapf(err, "failed to parse config file JSON [%s]", configFile)
+		return c, errors.Wrapf(err, "Error parsing config file JSON [%s]", configFile)
 	}
 
 	if c.ListenAddr == "" {

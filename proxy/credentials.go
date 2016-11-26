@@ -85,7 +85,7 @@ func (c *credentialsProvider) CredentialsForIP(containerIP string) (credentials,
 
 	container, err := c.container.ContainerForIP(containerIP)
 	if err != nil {
-		return credentials{}, errors.Wrapf(err, "failed to find container with IP [%s]", containerIP)
+		return credentials{}, errors.Wrapf(err, "Error finding container with IP [%s]", containerIP)
 	}
 
 	oldCredentials, found := c.containerCredentials[containerIP]
@@ -105,7 +105,7 @@ func (c *credentialsProvider) CredentialsForIP(containerIP string) (credentials,
 		role, err := c.AssumeRole(arn, iamPolicy, generateSessionName(c.container.TypeName(), container.ID))
 
 		if err != nil {
-			return credentials{}, errors.Wrapf(err, "failed to assume role [%s] for container [%s] at IP {%s]", arn, container.Name, containerIP)
+			return credentials{}, errors.Wrapf(err, "Error assuming role [%s] for container [%s] at IP {%s]", arn, container.Name, containerIP)
 		}
 
 		oldCredentials = containerCredentials{container, role}
@@ -130,7 +130,7 @@ func (c *credentialsProvider) AssumeRole(role roleArn, iamPolicy, sessionName st
 	})
 
 	if err != nil {
-		return credentials{}, errors.Wrapf(err, "failed to assume role [%s] with policy [%s] and session name [%s]]", role, iamPolicy, sessionName)
+		return credentials{}, errors.Wrapf(err, "Error assuming role [%s] with policy [%s] and session name [%s]]", role, iamPolicy, sessionName)
 	}
 
 	return credentials{

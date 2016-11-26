@@ -28,7 +28,7 @@ type dockerContainerService struct {
 func newDockerContainerService(endpoint string, aliasToARN map[string]string, logger *log.Logger) (*dockerContainerService, error) {
 	c, err := client.NewEnvClient()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create docker client with endpoint [%s]", endpoint)
+		return nil, errors.Wrapf(err, "Error creating docker client with endpoint [%s]", endpoint)
 	}
 	return &dockerContainerService{
 		aliasToARN:     aliasToARN,
@@ -66,13 +66,13 @@ func (d *dockerContainerService) ContainerForIP(containerIP string) (containerIn
 }
 
 func (d *dockerContainerService) syncContainer(containerIP string, oldInfo dockerContainerInfo, now time.Time) (dockerContainerInfo, bool) {
-	d.log.Printf("Inspecting container: [%s]", oldInfo.ID)
 	container, err := d.docker.ContainerInspect(context.Background(), oldInfo.ID)
+
 	if err != nil || container.State.Status != runningState {
 		if client.IsErrContainerNotFound(err) {
-			d.log.Printf("Container not found, refreshing container info [%s]", oldInfo.ID)
+			d.log.Printf("syncContainer: container not found, refreshing container info [%s]", oldInfo.ID)
 		} else {
-			d.log.Printf("Error inspecting container, refreshing container info [%s]: %+v", oldInfo.ID, err)
+			d.log.Printf("syncContainer: Error inspecting container, refreshing container info [%s]: %+v", oldInfo.ID, err)
 		}
 
 		d.syncContainers(now)
@@ -86,10 +86,9 @@ func (d *dockerContainerService) syncContainer(containerIP string, oldInfo docke
 }
 
 func (d *dockerContainerService) syncContainers(now time.Time) {
-	d.log.Printf("Synchronizing state with running docker containers")
 	apiContainers, err := d.docker.ContainerList(context.Background(), types.ContainerListOptions{})
 	if err != nil {
-		d.log.Printf("Error listing running containers: %+v", err)
+		d.log.Printf("syncContainers: Error listing running containers: %+v", err)
 		return
 	}
 
@@ -106,31 +105,30 @@ func (d *dockerContainerService) syncContainers(now time.Time) {
 		}
 
 		var containerIPs []string
-		for netName, net := range container.NetworkSettings.Networks {
+		for _, net := range container.NetworkSettings.Networks {
 			if net.IPAddress != "" {
 				containerIPs = append(containerIPs, net.IPAddress)
-				d.log.Printf("collectContainerIP: id [%s] name %v net [%s] ip [%s] alias [%s]", container.ID[:10], container.Names, netName, net.IPAddress, alias)
 			}
 		}
 
 		if len(containerIPs) == 0 {
-			d.log.Printf("No IP addresses discovered for container [%s]", container.ID)
+			d.log.Printf("syncContainers: no IP addresses discovered for container [%s]", container.ID)
 			continue
 		}
 
 		roleName, ok := d.aliasToARN[alias]
 		if !ok {
-			d.log.Printf("Container [%s] %v has an unmapped role alias [%s]", container.ID, container.Names, alias)
+			d.log.Printf("syncContainers: container [%s] %v has an unmapped role alias [%s]", container.ID, container.Names, alias)
 			continue
 		}
 		role, roleErr := newRoleArn(roleName)
 		if roleErr != nil {
-			d.log.Printf("failed to create new role ARN with invalid name [%s]: %+v", role, roleErr)
+			d.log.Printf("syncContainers: Error creating new role ARN with invalid name [%s]: %+v", role, roleErr)
 			continue
 		}
 
 		for _, ipAddress := range containerIPs {
-			d.log.Printf("Container: id [%s] ip [%s] image [%s] role [%s]", container.ID[:6], ipAddress, container.Image, role)
+			d.log.Printf("syncContainers: id [%s] ip [%s] image [%s] role [%s]", container.ID[:6], ipAddress, container.Image, role)
 
 			containerIPMap[ipAddress] = dockerContainerInfo{
 				containerInfo: containerInfo{
