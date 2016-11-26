@@ -1,6 +1,5 @@
-package proxy_test
+package proxy
 
-/*
 import (
 	"testing"
 
@@ -27,4 +26,4 @@ func TestNewRoleArnWithPath(t *testing.T) {
 	assert.Equal("/this/is/the/path/", arn.Path())
 	assert.Equal("123456789012", arn.AccountID())
 	assert.Equal("arn:aws:iam::123456789012:role/this/is/the/path/test-role-name", arn.String())
-}*/
+}

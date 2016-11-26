@@ -1,4 +1,4 @@
-.PHONY: build install autolint clean
+.PHONY: build install autolint clean test
 
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 ROOT_DIR = $(shell pwd)
@@ -29,5 +29,8 @@ autolint:
 
 clean:
 	@go clean -i
+
+test:
+	@CGO_ENABLED=1 go test -v -race git.codeactual.com/codeactual/ec2metaproxy/proxy
 
 -include precheck
