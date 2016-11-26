@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	logger := log.New(os.Stdout, "ec2metaproxy", log.LstdFlags|log.LUTC)
+	logger := log.New(os.Stdout, "ec2metaproxy ", log.LstdFlags|log.LUTC)
 
 	p, initErr := proxy.New(logger)
 	if initErr != nil {
