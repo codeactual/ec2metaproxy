@@ -34,6 +34,10 @@ func NewConfigFromFlag() (c Config, err error) {
 	flag.StringVar(&configFile, "c", "", "Path to JSON config file.")
 	flag.Parse()
 
+	if configFile == "" {
+		return c, errors.New("'-config <file>' flag is required.")
+	}
+
 	configBytes, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		return c, errors.Wrapf(err, "Error reading config file [%s]", configFile)
