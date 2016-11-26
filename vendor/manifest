@@ -270,6 +270,14 @@
 			"branch": "master",
 			"path": "vendor/golang.org/x/time/rate",
 			"notests": true
+		},
+		{
+			"importpath": "github.com/pkg/errors",
+			"repository": "https://github.com/pkg/errors",
+			"vcs": "git",
+			"revision": "248dadf4e9068a0b3e79f02ed0a610d935de5302",
+			"branch": "master",
+			"notests": true
 		}
 	]
 }

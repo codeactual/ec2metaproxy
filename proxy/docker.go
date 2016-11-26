@@ -1,8 +1,9 @@
-package main
+package proxy
 
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -19,10 +20,12 @@ type dockerContainerInfo struct {
 
 type dockerContainerService struct {
 	containerIPMap map[string]dockerContainerInfo
+	aliasToARN     map[string]string
 	docker         *client.Client
+	log            *log.Logger
 }
 
-func newDockerContainerService(endpoint string) (*dockerContainerService, error) {
+func newDockerContainerService(endpoint string, aliasToARN map[string]string, logger *log.Logger) (*dockerContainerService, error) {
 	c, err := client.NewEnvClient()
 	if err != nil {
 		panic(err)
@@ -33,8 +36,10 @@ func newDockerContainerService(endpoint string) (*dockerContainerService, error)
 	}
 
 	return &dockerContainerService{
+		aliasToARN:     aliasToARN,
 		containerIPMap: make(map[string]dockerContainerInfo),
 		docker:         c,
+		log:            logger,
 	}, nil
 }
 
@@ -61,13 +66,13 @@ func (d *dockerContainerService) ContainerForIP(containerIP string) (containerIn
 }
 
 func (d *dockerContainerService) syncContainer(containerIP string, oldInfo dockerContainerInfo, now time.Time) (dockerContainerInfo, bool) {
-	verbosef("Inspecting container: [%s]", oldInfo.ID)
+	d.log.Printf("Inspecting container: [%s]", oldInfo.ID)
 	container, err := d.docker.ContainerInspect(context.Background(), oldInfo.ID)
 	if err != nil || container.State.Status != runningState {
 		if client.IsErrContainerNotFound(err) {
-			verbosef("Container not found, refreshing container info [%s]", oldInfo.ID)
+			d.log.Printf("Container not found, refreshing container info [%s]", oldInfo.ID)
 		} else {
-			verbosef("Error inspecting container, refreshing container info [%s]: %+v", oldInfo.ID, err)
+			d.log.Printf("Error inspecting container, refreshing container info [%s]: %+v", oldInfo.ID, err)
 		}
 
 		d.syncContainers(now)
@@ -81,10 +86,10 @@ func (d *dockerContainerService) syncContainer(containerIP string, oldInfo docke
 }
 
 func (d *dockerContainerService) syncContainers(now time.Time) {
-	verbosef("Synchronizing state with running docker containers")
+	d.log.Printf("Synchronizing state with running docker containers")
 	apiContainers, err := d.docker.ContainerList(context.Background(), types.ContainerListOptions{})
 	if err != nil {
-		verbosef("Error listing running containers: %=v", err)
+		d.log.Printf("Error listing running containers: %+v", err)
 		return
 	}
 
@@ -95,7 +100,7 @@ func (d *dockerContainerService) syncContainers(now time.Time) {
 		if container.State != runningState {
 			continue
 		}
-		alias, ok := container.Labels[labelKey]
+		alias, ok := container.Labels[LabelKey]
 		if !ok {
 			continue
 		}
@@ -104,35 +109,35 @@ func (d *dockerContainerService) syncContainers(now time.Time) {
 		for netName, net := range container.NetworkSettings.Networks {
 			if net.IPAddress != "" {
 				containerIPs = append(containerIPs, net.IPAddress)
-				verbosef("collectContainerIP: id [%s] name %v net [%s] ip [%s] alias [%s]\n", container.ID[:10], container.Names, netName, net.IPAddress, alias)
+				d.log.Printf("collectContainerIP: id [%s] name %v net [%s] ip [%s] alias [%s]", container.ID[:10], container.Names, netName, net.IPAddress, alias)
 			}
 		}
 
 		if len(containerIPs) == 0 {
-			verbosef("No IP addresses discovered for container [%s]", container.ID)
+			d.log.Printf("No IP addresses discovered for container [%s]", container.ID)
 			continue
 		}
 
-		roleName, ok := proxyConfig.AliasToARN[alias]
+		roleName, ok := d.aliasToARN[alias]
 		if !ok {
-			verbosef("Container [%s] %v has an unmapped role alias [%s]", container.ID, container.Names, alias)
+			d.log.Printf("Container [%s] %v has an unmapped role alias [%s]", container.ID, container.Names, alias)
 			continue
 		}
 		role, roleErr := newRoleArn(roleName)
 		if roleErr != nil {
-			verbosef("failed to create new role ARN with invalid name [%s]: %+v", role, roleErr)
+			d.log.Printf("failed to create new role ARN with invalid name [%s]: %+v", role, roleErr)
 			continue
 		}
 
 		for _, ipAddress := range containerIPs {
-			verbosef("Container: id [%s] ip [%s] image [%s] role [%s]", container.ID[:6], ipAddress, container.Image, role)
+			d.log.Printf("Container: id [%s] ip [%s] image [%s] role [%s]", container.ID[:6], ipAddress, container.Image, role)
 
 			containerIPMap[ipAddress] = dockerContainerInfo{
 				containerInfo: containerInfo{
 					ID:        container.ID,
 					Name:      strings.Join(container.Names, ","),
 					IamRole:   role,
-					IamPolicy: container.Labels[policyKey],
+					IamPolicy: container.Labels[PolicyKey],
 				},
 				RefreshTime: refreshAt,
 			}
