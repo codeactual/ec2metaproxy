@@ -21,7 +21,7 @@ func main() {
 		log.Fatalf("Error creating proxy: %+v", initErr)
 	}
 
-	http.HandleFunc("/", p.HandleUnmatched)
+	http.Handle("/", proxy.RequestID(p))
 
 	logger.Fatal(p.Listen())
 }

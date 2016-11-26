@@ -63,19 +63,26 @@ func New(config Config, logger *log.Logger) (*Proxy, error) {
 	return &p, nil
 }
 
-// HandleUnmatched can be used to handle "/" requests and will delegate to HandleCredentials
+// ServeHTTP can be used to handle "/" requests and will delegate to HandleCredentials
 // to produce a response.
-func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
+func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	clientIP := remoteIP(r.RemoteAddr)
+	reqID := requestIDFromContext(r.Context())
+
 	match := credsRegex.FindStringSubmatch(r.URL.Path)
 	if match != nil {
 		p.HandleCredentials(MetadataURL, match[1], match[2], p.credsProvider, w, r)
 		return
 	}
 
+	if p.config.Verbose {
+		p.log.Printf("FORWARD request: id [%s] ip [%s] path [%s]", reqID, clientIP, r.URL.Path)
+	}
+
 	proxyReq, err := http.NewRequest(r.Method, fmt.Sprintf("%s%s", MetadataURL, r.URL.Path), r.Body)
 
 	if err != nil {
-		p.log.Printf("HandleUnmatched: Error creating proxy http request: %+v", err)
+		p.log.Printf("ServeHTTP: Error creating proxy http request: %+v", err)
 		http.Error(w, "An unexpected error occurred communicating with Amazon", http.StatusInternalServerError)
 		return
 	}
@@ -84,7 +91,7 @@ func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 	resp, err := p.httpClient.RoundTrip(proxyReq)
 
 	if err != nil {
-		p.log.Printf("HandleUnmatched: Error forwarding request to EC2 metadata service: %+v", err)
+		p.log.Printf("ServeHTTP: Error forwarding request to EC2 metadata service: %+v", err)
 		http.Error(w, "An unexpected error occurred communicating with Amazon", http.StatusInternalServerError)
 		return
 	}
@@ -92,20 +99,26 @@ func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		closeErr := resp.Body.Close()
 		if closeErr != nil {
-			p.log.Printf("HandleUnmatched: Error closing respond body: %+v", closeErr)
+			p.log.Printf("ServeHTTP: Error closing respond body: %+v", closeErr)
 		}
 	}()
 
 	copyHeaders(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		p.log.Printf("HandleUnmatched: Error copying response content from EC2 metadata service: %+v", err)
+		p.log.Printf("ServeHTTP: Error copying response content from EC2 metadata service: %+v", err)
 	}
 }
 
-// HandleCredentials responds to credentials requests identified in HandleUnmatched.
+// HandleCredentials responds to credentials requests identified in ServeHTTP.
 func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *credentialsProvider, w http.ResponseWriter, r *http.Request) {
+	clientIP := remoteIP(r.RemoteAddr)
+	reqID := requestIDFromContext(r.Context())
 	awsURL := baseURL + "/" + apiVersion + "/meta-data/iam/security-credentials/"
+
+	if p.config.Verbose {
+		p.log.Printf("PROXY request: id [%s] ip [%s] path [%s]", reqID, clientIP, awsURL)
+	}
 
 	awsReq, err := http.NewRequest("GET", awsURL, nil)
 	if err != nil {
@@ -134,7 +147,6 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		return
 	}
 
-	clientIP := remoteIP(r.RemoteAddr)
 	credentials, err := c.CredentialsForIP(clientIP)
 
 	if err != nil {

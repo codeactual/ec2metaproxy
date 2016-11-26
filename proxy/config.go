@@ -22,6 +22,8 @@ type Config struct {
 	DockerHost string `json:"dockerHost"`
 	// ListenAddr is a TCP network address.
 	ListenAddr string `json:"listen"`
+	// Verbose enables request/response logging to standard out.
+	Verbose bool
 }
 
 // NewConfigFromFlag constructs a new Config from the JSON file obtained via `-config` CLI flag.
