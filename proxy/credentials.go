@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"sync"
@@ -79,11 +80,11 @@ func newCredentialsProvider(awsSession *session.Session, container containerServ
 //
 // If the cache contains no fresh and valid role credentials, a fresh set is requested from
 // AWS and cached.
-func (c *credentialsProvider) CredentialsForIP(containerIP string) (credentials, error) {
+func (c *credentialsProvider) CredentialsForIP(ctx context.Context, containerIP string) (credentials, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	container, err := c.container.ContainerForIP(containerIP)
+	container, err := c.container.ContainerForIP(ctx, containerIP)
 	if err != nil {
 		return credentials{}, errors.Wrapf(err, "Error finding container with IP [%s]", containerIP)
 	}

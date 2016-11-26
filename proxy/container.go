@@ -1,5 +1,7 @@
 package proxy
 
+import "context"
+
 type containerInfo struct {
 	ID        string
 	Name      string
@@ -8,6 +10,6 @@ type containerInfo struct {
 }
 
 type containerService interface {
-	ContainerForIP(containerIP string) (containerInfo, error)
+	ContainerForIP(ctx context.Context, containerIP string) (containerInfo, error)
 	TypeName() string
 }

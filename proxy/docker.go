@@ -47,15 +47,15 @@ func (d *dockerContainerService) TypeName() string {
 //
 // If containerInfo exists in the cache, keyed by the container IP, then it is returned.
 // Otherwise syncContainer is used to collect fresh containerInfo from the docker API.
-func (d *dockerContainerService) ContainerForIP(containerIP string) (containerInfo, error) {
+func (d *dockerContainerService) ContainerForIP(ctx context.Context, containerIP string) (containerInfo, error) {
 	info, found := d.containerIPMap[containerIP]
 	now := time.Now()
 
 	if !found {
-		d.syncContainers(now)
+		d.syncContainers(ctx, now)
 		info, found = d.containerIPMap[containerIP]
 	} else if now.After(info.RefreshTime) {
-		info, found = d.syncContainer(containerIP, info, now)
+		info, found = d.syncContainer(ctx, containerIP, info, now)
 	}
 
 	if !found {
@@ -65,17 +65,19 @@ func (d *dockerContainerService) ContainerForIP(containerIP string) (containerIn
 	return info.containerInfo, nil
 }
 
-func (d *dockerContainerService) syncContainer(containerIP string, oldInfo dockerContainerInfo, now time.Time) (dockerContainerInfo, bool) {
-	container, err := d.docker.ContainerInspect(context.Background(), oldInfo.ID)
+func (d *dockerContainerService) syncContainer(ctx context.Context, containerIP string, oldInfo dockerContainerInfo, now time.Time) (dockerContainerInfo, bool) {
+	reqID := requestIDFromContext(ctx)
+
+	container, err := d.docker.ContainerInspect(ctx, oldInfo.ID)
 
 	if err != nil || container.State.Status != runningState {
 		if client.IsErrContainerNotFound(err) {
-			d.log.Printf("syncContainer: container not found, refreshing container info [%s]", oldInfo.ID)
+			d.log.Printf("syncContainer (%s): container not found, refreshing container info [%s]", reqID, oldInfo.ID)
 		} else {
-			d.log.Printf("syncContainer: Error inspecting container, refreshing container info [%s]: %+v", oldInfo.ID, err)
+			d.log.Printf("syncContainer (%s): Error inspecting container, refreshing container info [%s]: %+v", reqID, oldInfo.ID, err)
 		}
 
-		d.syncContainers(now)
+		d.syncContainers(ctx, now)
 		info, found := d.containerIPMap[containerIP]
 		return info, found
 	}
@@ -85,10 +87,12 @@ func (d *dockerContainerService) syncContainer(containerIP string, oldInfo docke
 	return oldInfo, true
 }
 
-func (d *dockerContainerService) syncContainers(now time.Time) {
-	apiContainers, err := d.docker.ContainerList(context.Background(), types.ContainerListOptions{})
+func (d *dockerContainerService) syncContainers(ctx context.Context, now time.Time) {
+	reqID := requestIDFromContext(ctx)
+
+	apiContainers, err := d.docker.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
-		d.log.Printf("syncContainers: Error listing running containers: %+v", err)
+		d.log.Printf("syncContainers (%s): Error listing running containers: %+v", reqID, err)
 		return
 	}
 
@@ -112,23 +116,23 @@ func (d *dockerContainerService) syncContainers(now time.Time) {
 		}
 
 		if len(containerIPs) == 0 {
-			d.log.Printf("syncContainers: no IP addresses discovered for container [%s]", container.ID)
+			d.log.Printf("syncContainers (%s): no IP addresses discovered for container [%s]", reqID, container.ID)
 			continue
 		}
 
 		roleName, ok := d.aliasToARN[alias]
 		if !ok {
-			d.log.Printf("syncContainers: container [%s] %v has an unmapped role alias [%s]", container.ID, container.Names, alias)
+			d.log.Printf("syncContainers (%s): container [%s] %v has an unmapped role alias [%s]", reqID, container.ID, container.Names, alias)
 			continue
 		}
 		role, roleErr := newRoleArn(roleName)
 		if roleErr != nil {
-			d.log.Printf("syncContainers: Error creating new role ARN with invalid name [%s]: %+v", role, roleErr)
+			d.log.Printf("syncContainers (%s): Error creating new role ARN with invalid name [%s]: %+v", reqID, role, roleErr)
 			continue
 		}
 
 		for _, ipAddress := range containerIPs {
-			d.log.Printf("syncContainers: id [%s] ip [%s] image [%s] role [%s]", container.ID[:6], ipAddress, container.Image, role)
+			d.log.Printf("syncContainers (%s): id [%s] ip [%s] image [%s] role [%s]", reqID, container.ID[:6], ipAddress, container.Image, role)
 
 			containerIPMap[ipAddress] = dockerContainerInfo{
 				containerInfo: containerInfo{

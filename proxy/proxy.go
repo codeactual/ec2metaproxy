@@ -76,13 +76,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.config.Verbose {
-		p.log.Printf("FORWARD request: id [%s] ip [%s] path [%s]", reqID, clientIP, r.URL.Path)
+		p.log.Printf("ServeHTTP (%s): FORWARD REQUEST ip [%s] path [%s]", reqID, clientIP, r.URL.Path)
 	}
 
 	proxyReq, err := http.NewRequest(r.Method, fmt.Sprintf("%s%s", MetadataURL, r.URL.Path), r.Body)
 
 	if err != nil {
-		p.log.Printf("ServeHTTP: Error creating proxy http request: %+v", err)
+		p.log.Printf("ServeHTTP (%s): Error creating proxy http request: %+v", reqID, err)
 		http.Error(w, "An unexpected error occurred communicating with Amazon", http.StatusInternalServerError)
 		return
 	}
@@ -91,7 +91,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp, err := p.httpClient.RoundTrip(proxyReq)
 
 	if err != nil {
-		p.log.Printf("ServeHTTP: Error forwarding request to EC2 metadata service: %+v", err)
+		p.log.Printf("ServeHTTP (%s): Error forwarding request to EC2 metadata service: %+v", reqID, err)
 		http.Error(w, "An unexpected error occurred communicating with Amazon", http.StatusInternalServerError)
 		return
 	}
@@ -99,30 +99,35 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		closeErr := resp.Body.Close()
 		if closeErr != nil {
-			p.log.Printf("ServeHTTP: Error closing respond body: %+v", closeErr)
+			p.log.Printf("ServeHTTP (%s): Error closing respond body: %+v", reqID, closeErr)
 		}
 	}()
 
 	copyHeaders(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		p.log.Printf("ServeHTTP: Error copying response content from EC2 metadata service: %+v", err)
+		p.log.Printf("ServeHTTP (%s): Error copying response content from EC2 metadata service: %+v", reqID, err)
+	}
+
+	if p.config.Verbose {
+		p.log.Printf("ServeHTTP (%s): FORWARD RESPONSE ip [%s] path [%s]", reqID, clientIP, r.URL.Path)
 	}
 }
 
 // HandleCredentials responds to credentials requests identified in ServeHTTP.
 func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *credentialsProvider, w http.ResponseWriter, r *http.Request) {
 	clientIP := remoteIP(r.RemoteAddr)
-	reqID := requestIDFromContext(r.Context())
+	ctx := r.Context()
+	reqID := requestIDFromContext(ctx)
 	awsURL := baseURL + "/" + apiVersion + "/meta-data/iam/security-credentials/"
 
 	if p.config.Verbose {
-		p.log.Printf("PROXY request: id [%s] ip [%s] path [%s]", reqID, clientIP, awsURL)
+		p.log.Printf("HandleCredentials (%s): PROXY REQUEST ip [%s] path [%s]", reqID, clientIP, awsURL)
 	}
 
 	awsReq, err := http.NewRequest("GET", awsURL, nil)
 	if err != nil {
-		p.log.Printf("HandleCredentials: Error creating request [%s]: %+v", awsURL, err)
+		p.log.Printf("HandleCredentials (%s): Error creating request [%s]: %+v", reqID, awsURL, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -130,14 +135,14 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	resp, err := p.httpClient.RoundTrip(awsReq)
 
 	if err != nil {
-		p.log.Printf("HandleCredentials: Error requesting creds path for API version [%s]: %+v", apiVersion, err)
+		p.log.Printf("HandleCredentials (%s): Error requesting creds path for API version [%s]: %+v", reqID, apiVersion, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	err = resp.Body.Close()
 	if err != nil {
-		p.log.Printf("HandleCredentials: Error closing credentials response body: %+v", err)
+		p.log.Printf("HandleCredentials (%s): Error closing credentials response body: %+v", reqID, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -147,10 +152,10 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		return
 	}
 
-	credentials, err := c.CredentialsForIP(clientIP)
+	credentials, err := c.CredentialsForIP(ctx, clientIP)
 
 	if err != nil {
-		p.log.Printf("HandleCredentials: Error getting credentials for IP [%s]: %+v", clientIP, err)
+		p.log.Printf("HandleCredentials (%s): Error getting credentials for IP [%s]: %+v", reqID, clientIP, err)
 		http.Error(w, "An unexpected error getting container role", http.StatusInternalServerError)
 		return
 	}
@@ -160,7 +165,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	if len(subpath) == 0 {
 		_, writeErr := w.Write([]byte(roleName))
 		if writeErr != nil {
-			p.log.Printf("HandleCredentials: Error writing role name to response: %+v", writeErr)
+			p.log.Printf("HandleCredentials (%s): Error writing role name to response: %+v", reqID, writeErr)
 		}
 	} else if !strings.HasPrefix(subpath, roleName) || (len(subpath) > len(roleName) && subpath[len(roleName)-1] != '/') {
 		// An idiosyncrasy of the standard EC2 metadata service:
@@ -179,14 +184,18 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		})
 
 		if err != nil {
-			p.log.Printf("HandleCredentials: Error marshaling credentials: %+v", err)
+			p.log.Printf("HandleCredentials (%s): Error marshaling credentials: %+v", reqID, err)
 			w.WriteHeader(http.StatusInternalServerError)
 		} else {
 			_, writeErr := w.Write(creds)
 			if writeErr != nil {
-				p.log.Printf("HandleCredentials: Error writing credentials to response: %+v", writeErr)
+				p.log.Printf("HandleCredentials (%s): Error writing credentials to response: %+v", reqID, writeErr)
 			}
 		}
+	}
+
+	if p.config.Verbose {
+		p.log.Printf("HandleCredentials (%s): PROXY RESPONSE ip [%s] path [%s] role [%s] code [%d]", reqID, clientIP, awsURL, roleName, resp.StatusCode)
 	}
 }
 
@@ -194,7 +203,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 func (p *Proxy) Listen() error {
 	err := http.ListenAndServe(p.config.ListenAddr, nil)
 	if err == nil {
-		p.log.Printf("listening on address [%s]", p.config.ListenAddr)
+		p.log.Printf("Listen: [%s]", p.config.ListenAddr)
 	} else {
 		return errors.Wrapf(err, "Error listening on address [%s]", p.config.ListenAddr)
 	}
