@@ -17,7 +17,6 @@ import (
 
 const (
 	defaultMetadataURL = "http://169.254.169.254"
-	defaultListenAddr  = ":18000"
 	labelKey           = "ec2metaproxy.RoleAlias"
 	policyKey          = "ec2metaproxy.Policy"
 )
@@ -142,6 +141,8 @@ type ProxyConfig struct {
 	DefaultPolicy string `json:"defaultPolicy"`
 	// DockerHost is a valid DOCKER_HOST string.
 	DockerHost string `json:"dockerHost"`
+	// ListenAddr is a TCP network address.
+	ListenAddr string `json:"listen"`
 }
 
 var proxyConfig ProxyConfig
@@ -162,6 +163,10 @@ func main() {
 	jsonErr := json.Unmarshal(configBytes, &proxyConfig)
 	if jsonErr != nil {
 		panic(jsonErr)
+	}
+
+	if proxyConfig.ListenAddr == "" {
+		panic("Config file must select a server address ('listen', ex. ':18000').")
 	}
 
 	defaultIamRole, roleErr := newRoleArn(proxyConfig.AliasToARN[proxyConfig.DefaultAlias])
@@ -213,11 +218,11 @@ func main() {
 		}
 	})
 
-	listenErr := http.ListenAndServe(defaultListenAddr, nil)
+	listenErr := http.ListenAndServe(proxyConfig.ListenAddr, nil)
 	if listenErr == nil {
-		log.Printf("listening on address [%s]\n", defaultListenAddr)
+		log.Printf("listening on address [%s]\n", proxyConfig.ListenAddr)
 	} else {
-		log.Fatalf("failed to listen on address [%s]: %+v\n", defaultListenAddr, listenErr)
+		log.Fatalf("failed to listen on address [%s]: %+v\n", proxyConfig.ListenAddr, listenErr)
 	}
 }
 
