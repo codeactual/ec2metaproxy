@@ -38,10 +38,15 @@ func newDockerContainerService(endpoint string, aliasToARN map[string]string, lo
 	}, nil
 }
 
+// TypeName implements a containerService method.
 func (d *dockerContainerService) TypeName() string {
 	return "docker"
 }
 
+// ContainerForIP implements a containerService method.
+//
+// If containerInfo exists in the cache, keyed by the container IP, then it is returned.
+// Otherwise syncContainer is used to collect fresh containerInfo from the docker API.
 func (d *dockerContainerService) ContainerForIP(containerIP string) (containerInfo, error) {
 	info, found := d.containerIPMap[containerIP]
 	now := time.Now()
@@ -95,7 +100,7 @@ func (d *dockerContainerService) syncContainers(now time.Time) {
 		if container.State != runningState {
 			continue
 		}
-		alias, ok := container.Labels[LabelKey]
+		alias, ok := container.Labels[RoleLabelKey]
 		if !ok {
 			continue
 		}
@@ -132,7 +137,7 @@ func (d *dockerContainerService) syncContainers(now time.Time) {
 					ID:        container.ID,
 					Name:      strings.Join(container.Names, ","),
 					IamRole:   role,
-					IamPolicy: container.Labels[PolicyKey],
+					IamPolicy: container.Labels[PolicyLabelKey],
 				},
 				RefreshTime: refreshAt,
 			}

@@ -74,12 +74,16 @@ func newCredentialsProvider(awsSession *session.Session, container containerServ
 	}
 }
 
+// CredentialsForIP resolves the IP to a specific container, then attempts to assume the role
+// specified in the container's metadata. Role specific credentials are returned.
+//
+// If the cache contains no fresh and valid role credentials, a fresh set is requested from
+// AWS and cached.
 func (c *credentialsProvider) CredentialsForIP(containerIP string) (credentials, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	container, err := c.container.ContainerForIP(containerIP)
-
 	if err != nil {
 		return credentials{}, errors.Wrapf(err, "failed to find container with IP [%s]", containerIP)
 	}

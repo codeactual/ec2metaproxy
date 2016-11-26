@@ -1,7 +1,7 @@
 package proxy
 
-type NopWriter struct{}
+type nopWriter struct{}
 
-func (NopWriter) Write(p []byte) (int, error) {
+func (nopWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }

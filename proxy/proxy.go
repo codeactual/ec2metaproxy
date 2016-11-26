@@ -26,6 +26,10 @@ type metadataCredentials struct {
 	Expiration      time.Time
 }
 
+// Proxy provides HTTP handlers for responding to container requests and mediates requests
+// to the real upstream metadata service. Its mediation duties also include mapping
+// containers to the roles identified in their (docker) metadata, caching of
+// container/credential information, and (optional) operational logging.
 type Proxy struct {
 	httpClient    *http.Transport
 	credsProvider *credentialsProvider
@@ -33,9 +37,10 @@ type Proxy struct {
 	log           *log.Logger
 }
 
+// New creates a Proxy instance using the given configuration.
 func New(logger *log.Logger) (*Proxy, error) {
 	if logger == nil {
-		logger = log.New(new(NopWriter), "", log.LstdFlags)
+		logger = log.New(new(nopWriter), "", log.LstdFlags)
 	}
 
 	config, err := NewConfigFromFlag()
@@ -63,6 +68,8 @@ func New(logger *log.Logger) (*Proxy, error) {
 	return &p, nil
 }
 
+// HandleUnmatched can be used to handle "/" requests and will delegate to HandleCredentials
+// to produce a response.
 func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 	p.log.Printf("Client [%s] request [%s]", remoteIP(r.RemoteAddr), r.URL.Path)
 
@@ -89,7 +96,12 @@ func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		closeErr := resp.Body.Close()
+		if closeErr != nil {
+			p.log.Printf("Error closing respond body: %+v", closeErr)
+		}
+	}()
 
 	copyHeaders(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
@@ -98,12 +110,13 @@ func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// HandleCredentials responds to credentials requests identified in HandleUnmatched.
 func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *credentialsProvider, w http.ResponseWriter, r *http.Request) {
 	awsURL := baseURL + "/" + apiVersion + "/meta-data/iam/security-credentials/"
 
 	awsReq, err := http.NewRequest("GET", awsURL, nil)
 	if err != nil {
-		log.Printf("Error creating request [%s]: %+v", awsURL, err)
+		p.log.Printf("Error creating request [%s]: %+v", awsURL, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -111,14 +124,14 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	resp, err := p.httpClient.RoundTrip(awsReq)
 
 	if err != nil {
-		log.Printf("Error requesting creds path for API version [%s]: %+v", apiVersion, err)
+		p.log.Printf("Error requesting creds path for API version [%s]: %+v", apiVersion, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	err = resp.Body.Close()
 	if err != nil {
-		log.Printf("Error closing credentials response body: %+v", err)
+		p.log.Printf("Error closing credentials response body: %+v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -132,7 +145,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	credentials, err := c.CredentialsForIP(clientIP)
 
 	if err != nil {
-		log.Printf("failed to get credentials for IP [%s]: %+v", clientIP, err)
+		p.log.Printf("failed to get credentials for IP [%s]: %+v", clientIP, err)
 		http.Error(w, "An unexpected error getting container role", http.StatusInternalServerError)
 		return
 	}
@@ -140,7 +153,10 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	roleName := credentials.RoleArn.RoleName()
 
 	if len(subpath) == 0 {
-		w.Write([]byte(roleName))
+		_, writeErr := w.Write([]byte(roleName))
+		if writeErr != nil {
+			p.log.Printf("Error writing role name to response: %+v", writeErr)
+		}
 	} else if !strings.HasPrefix(subpath, roleName) || (len(subpath) > len(roleName) && subpath[len(roleName)-1] != '/') {
 		// An idiosyncrasy of the standard EC2 metadata service:
 		// Subpaths of the role name are ignored. So long as the correct role name is provided,
@@ -158,10 +174,13 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		})
 
 		if err != nil {
-			log.Printf("Error marshaling credentials: %+v", err)
+			p.log.Printf("Error marshaling credentials: %+v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 		} else {
-			w.Write(creds)
+			_, writeErr := w.Write(creds)
+			if writeErr != nil {
+				p.log.Printf("Error writing credentials to response: %+v", writeErr)
+			}
 		}
 	}
 }
