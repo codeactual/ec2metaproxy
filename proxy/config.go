@@ -24,6 +24,8 @@ type Config struct {
 	ListenAddr string `json:"listen"`
 }
 
+// NewConfigFromFlag constructs a new Config from the JSON file obtained via `-config` CLI flag.
+// It also validates the unmarshaled Config fields.
 func NewConfigFromFlag() (c Config, err error) {
 	var configFile string
 
@@ -41,6 +43,12 @@ func NewConfigFromFlag() (c Config, err error) {
 
 	if c.ListenAddr == "" {
 		return c, errors.New("Config file must select a server address ('listen', ex. ':18000').")
+	}
+	if len(c.AliasToARN) == 0 {
+		return c, errors.New("Config file must include at least one 'aliasToARN' mapping.")
+	}
+	if c.AliasToARN[c.DefaultAlias] == "" {
+		return c, errors.Errorf("Config file selected an default alias [%s] not mapped in `aliasToARN'.", c.DefaultAlias)
 	}
 
 	return c, nil
