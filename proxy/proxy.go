@@ -38,14 +38,9 @@ type Proxy struct {
 }
 
 // New creates a Proxy instance using the given configuration.
-func New(logger *log.Logger) (*Proxy, error) {
+func New(config Config, logger *log.Logger) (*Proxy, error) {
 	if logger == nil {
 		logger = log.New(new(nopWriter), "", log.LstdFlags)
-	}
-
-	config, err := NewConfigFromFlag()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to configure the proxy")
 	}
 
 	defaultIamRole, err := newRoleArn(config.AliasToARN[config.DefaultAlias])
