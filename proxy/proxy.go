@@ -75,11 +75,11 @@ func (p *Proxy) HandleUnmatched(w http.ResponseWriter, r *http.Request) {
 
 	match := credsRegex.FindStringSubmatch(r.URL.Path)
 	if match != nil {
-		p.HandleCredentials(DefaultMetadataURL, match[1], match[2], p.credsProvider, w, r)
+		p.HandleCredentials(MetadataURL, match[1], match[2], p.credsProvider, w, r)
 		return
 	}
 
-	proxyReq, err := http.NewRequest(r.Method, fmt.Sprintf("%s%s", DefaultMetadataURL, r.URL.Path), r.Body)
+	proxyReq, err := http.NewRequest(r.Method, fmt.Sprintf("%s%s", MetadataURL, r.URL.Path), r.Body)
 
 	if err != nil {
 		p.log.Printf("Error creating proxy http request: %+v", err)
