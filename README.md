@@ -41,6 +41,23 @@ See:
 
 - [Docker Container Setup](docs/docker-container-setup.md)
 
+## Configuration File
+
+Example that specifies all options:
+
+    {
+      "defaultAlias": "default",
+      "aliasToARN": {
+        "default": "arn:aws:iam::000000000000:role/ProxyDefault",
+        "db": "arn:aws:iam::000000000000:role/MysqlSlave"
+      },
+      "dockerHost": "unix:///var/run/custom-docker.sock",
+      "listen": ":18000",
+      "verbose": true
+    }
+
+Select it with: `ec2metaproxy -c /path/to/config.json`
+
 # Fork Notes
 
 Goals of this fork:
@@ -50,6 +67,8 @@ Goals of this fork:
   - Map custom aliases to role ARNs in the config file.
   - Use docker's built-in object labels to store the aliases.
 - Reduce dependencies in favor of `log`, `flag`, and the official docker client package.
+- Refactor most of the project into its `proxy` package where `main()` is just a client.
+- Reduce `panic` use to only `rand.Read` errors on `proxy` package `init()`.
 - Remove `flynn` support.
 
 # License
