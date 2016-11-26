@@ -43,7 +43,7 @@ See:
 
 ## Configuration File
 
-Example that specifies all options:
+Example that specifies all settings:
 
     {
       "defaultAlias": "default",
@@ -55,6 +55,12 @@ Example that specifies all options:
       "listen": ":18000",
       "verbose": true
     }
+
+Required settings:
+
+- `listen`
+- `aliasToARN`
+- `defaultAlias`
 
 Select it with: `ec2metaproxy -c /path/to/config.json`
 
