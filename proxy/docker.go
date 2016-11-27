@@ -27,7 +27,13 @@ type dockerContainerService struct {
 }
 
 func newDockerContainerService(endpoint string, aliasToARN map[string]string, logger *log.Logger) (*dockerContainerService, error) {
-	os.Setenv("DOCKER_HOST", endpoint)
+	if endpoint != "" {
+		err := os.Setenv("DOCKER_HOST", endpoint)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Error setting DOCKER_HOST [%s]", endpoint)
+		}
+		logger.Printf("DOCKER_HOST is now [%s]", endpoint)
+	}
 
 	c, err := client.NewEnvClient()
 	if err != nil {
