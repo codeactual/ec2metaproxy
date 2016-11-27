@@ -113,7 +113,7 @@ Required settings:
 
 ## Docker
 
-    docker run -d --net=host --rm -v /var/run/docker.sock -v /path/to/config.json:/config.json:ro -p 18000:18000 ec2metaproxy:latest /config.json
+    docker run -d --net=host --rm -v /var/run/docker.sock:/var/run/docker.sock -v /path/to/config.json:/config.json:ro -p 18000:18000 ec2metaproxy:latest /config.json
 
 This example assumes:
 
