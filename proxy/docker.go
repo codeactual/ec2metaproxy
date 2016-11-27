@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -26,6 +27,8 @@ type dockerContainerService struct {
 }
 
 func newDockerContainerService(endpoint string, aliasToARN map[string]string, logger *log.Logger) (*dockerContainerService, error) {
+	os.Setenv("DOCKER_HOST", endpoint)
+
 	c, err := client.NewEnvClient()
 	if err != nil {
 		return nil, errors.Wrapf(err, "Error creating docker client with endpoint [%s]", endpoint)
