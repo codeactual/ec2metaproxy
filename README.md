@@ -113,12 +113,12 @@ Required settings:
 
 ## Docker
 
+    docker run -d --net=host --rm -v /var/run/docker.sock -v /path/to/config.json:/config.json:ro -p 18000:18000 ec2metaproxy:latest /config.json
+
 This example assumes:
 
 - The image was built using `make docker` with `TAG=latest`.
 - `iptables` and `config.json` were updated to use port `18000`.
-
-    docker run -d --net=host --rm -v /var/run/docker.sock -v /path/to/config.json:/config.json:ro -p 18000:18000 ec2metaproxy:latest /config.json
 
 # Dependencies
 
