@@ -63,10 +63,10 @@ See:
 
 ### Docker
 
+    GIT_REF=HEAD TAG=latest make docker
+
 - `GIT_REF`: a commit from this repository
 - `TAG`: a value of `latest` will create the Docker image `ec2metaproxy:latest`
-
-    GIT_REF=HEAD TAG=latest make docker
 
 > The above command will follow an [approach](https://joeshaw.org/smaller-docker-containers-for-go-apps/) creates two images but allows us to isolate the entire process inside containers.
 
