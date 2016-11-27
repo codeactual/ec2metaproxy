@@ -35,7 +35,7 @@ func NewConfigFromFlag() (c Config, err error) {
 	flag.Parse()
 
 	if configFile == "" {
-		return c, errors.New("'-config <file>' flag is required.")
+		return c, errors.New("'-c <file>' flag is required.")
 	}
 
 	configBytes, err := ioutil.ReadFile(configFile)
