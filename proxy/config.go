@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"os"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -55,6 +57,18 @@ func NewConfigFromFlag() (c Config, err error) {
 	}
 	if c.AliasToARN[c.DefaultAlias] == "" {
 		return c, errors.Errorf("Config file selected an default alias [%s] not mapped in `aliasToARN'.", c.DefaultAlias)
+	}
+
+	prefix := "unix://"
+	if strings.HasPrefix(c.DockerHost, prefix) {
+		name := c.DockerHost[7:]
+		fi, statErr := os.Stat(name)
+		if statErr != nil {
+			return c, errors.Wrapf(statErr, "Error during stat of DOCKER_HOST socket [%s]", name)
+		}
+		if fi.Mode()&os.ModeSocket == 0 {
+			return c, errors.Errorf("DOCKER_HOST [%s] is not a socket", name)
+		}
 	}
 
 	return c, nil
