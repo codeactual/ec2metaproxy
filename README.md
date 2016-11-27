@@ -62,20 +62,30 @@ Required settings:
 - `aliasToARN`
 - `defaultAlias`
 
-Select it with: `ec2metaproxy -c /path/to/config.json`
+# Run
+
+    ec2metaproxy -c /path/to/config.json
 
 # Fork Notes
 
 Goals of this fork:
 
 - Adopt a different way to map containers to the roles they assume:
-  - Use a JSON config file instead of environment variable injection at `docker run`.
-  - Map custom aliases to role ARNs in the config file.
-  - Use docker's built-in object labels to store the aliases.
+  - Store the mapping (and other settings) in a JSON config file.
+  - Map free-form aliases to role ARNs in the config file.
+  - Use docker's built-in [labels](https://docs.docker.com/search/?q=container+labels) to store the aliases.
 - Reduce dependencies in favor of `log`, `flag`, and the official docker client package.
 - Refactor most of the project into its `proxy` package where `main()` is just a client.
 - Reduce `panic` use to only `rand.Read` errors on `proxy` package `init()`.
-- Remove `flynn` support.
+- Remove `flynn` support since I cannot regularly test/maintain correctness.
+- Add optional HTTP request/response logs.
+
+# Dependencies
+
+- https://github.com/aws/aws-sdk-go (Apache 2.0, vendored)
+- https://github.com/docker/docker (Apache 2.0, vendored)
+- https://github.com/pkg/errors (BSD-2-Clause, vendored)
+- `request_id.go` middleware from https://github.com/zenazn/goji (MIT, embedded)
 
 # License
 
