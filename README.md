@@ -16,6 +16,20 @@ platform specific API. The container's metadata contains information about what 
 to use. Therefore, the proxy does not work for containers that do not use the container
 network bridge (for example, containers using "host" networking).
 
+# Fork Notes
+
+Goals of this https://github.com/dump247/ec2metaproxy fork:
+
+- Adopt a different way to map containers to the roles they assume:
+  - Store the mapping (and other settings) in a JSON config file.
+  - Map free-form aliases to role ARNs in the config file.
+  - Use docker's built-in [labels](https://docs.docker.com/search/?q=container+labels) to store the aliases.
+- Reduce dependencies in favor of `log`, `flag`, and the official docker client package.
+- Refactor most of the project into its `proxy` package where `main()` is just a client.
+- Reduce `panic` use to only `rand.Read` errors on `proxy` package `init()`.
+- Remove `flynn` support since I cannot regularly test/maintain correctness.
+- Add optional HTTP request/response logs.
+
 # Setup
 
 ## Host
@@ -64,21 +78,9 @@ Required settings:
 
 # Run
 
+## Basic
+
     ec2metaproxy -c /path/to/config.json
-
-# Fork Notes
-
-Goals of this fork:
-
-- Adopt a different way to map containers to the roles they assume:
-  - Store the mapping (and other settings) in a JSON config file.
-  - Map free-form aliases to role ARNs in the config file.
-  - Use docker's built-in [labels](https://docs.docker.com/search/?q=container+labels) to store the aliases.
-- Reduce dependencies in favor of `log`, `flag`, and the official docker client package.
-- Refactor most of the project into its `proxy` package where `main()` is just a client.
-- Reduce `panic` use to only `rand.Read` errors on `proxy` package `init()`.
-- Remove `flynn` support since I cannot regularly test/maintain correctness.
-- Add optional HTTP request/response logs.
 
 # Dependencies
 
