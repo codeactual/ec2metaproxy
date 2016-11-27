@@ -2,7 +2,6 @@
 
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 ROOT_DIR = $(shell pwd)
-SHELL = bash # for `time`
 GIT_REF_SHA=$(shell git rev-parse --short HEAD)
 CMDS=$(shell ls cmd)
 GIT_REF_LABEL=$(shell git symbolic-ref -q --short HEAD || git describe --tags --exact-match)
