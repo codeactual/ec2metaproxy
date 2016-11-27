@@ -8,7 +8,7 @@ CMDS=$(shell ls cmd)
 GIT_REF_LABEL=$(shell git symbolic-ref -q --short HEAD || git describe --tags --exact-match)
 GIT_DIRTY=$(shell git diff-index --quiet HEAD; echo $$? | sed 's/1/-dirty/' | sed 's/0//')
 BUILD_TIME=$(shell date +%FT%T%z)
-PKG_PATH=git.codeactual.com/codeactual/ec2metaproxy
+PKG_PATH=github.com/codeactual/ec2metaproxy
 LDFLAGS=-ldflags "-X ${PKG_PATH}/version.SCM=${GIT_REF_SHA}-${GIT_REF_LABEL}${GIT_DIRTY} -X ${PKG_PATH}/version.BuildTime=${BUILD_TIME}"
 
 precheck:
@@ -31,6 +31,6 @@ clean:
 	@go clean -i
 
 test:
-	@CGO_ENABLED=1 go test -v -race git.codeactual.com/codeactual/ec2metaproxy/proxy
+	@CGO_ENABLED=1 go test -v -race github.com/codeactual/ec2metaproxy/proxy
 
 -include precheck

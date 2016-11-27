@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"git.codeactual.com/codeactual/ec2metaproxy/proxy"
+	"github.com/codeactual/ec2metaproxy/proxy"
 )
 
 func main() {
