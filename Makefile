@@ -21,8 +21,7 @@ build:
 	@go build ${LDFLAGS} -v -o build/ec2metaproxy
 
 install:
-	@# Reenable cgo to avoid file permission issues.
-	@CGO_ENABLED=1 go install ${LDFLAGS} .
+	@go install ${LDFLAGS} .
 
 autolint:
 	@reflex -c reflex.conf
