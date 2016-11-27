@@ -1,5 +1,4 @@
 FROM alpine
 RUN apk add --no-cache ca-certificates
 COPY ec2metaproxy /bin/ec2metaproxy
-USER nobody
 ENTRYPOINT ["ec2metaproxy", "-c"]
