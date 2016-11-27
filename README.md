@@ -61,7 +61,13 @@ See:
 
     make build
 
-### Docker
+### Docker (quick)
+
+    make docker_latest
+
+This will create an `ec2metaproxy:latest` image from this repository's `HEAD`.
+
+### Docker (w/ configuration)
 
     GIT_REF=HEAD TAG=latest make docker
 
