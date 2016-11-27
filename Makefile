@@ -36,3 +36,6 @@ runner:
 	@docker images | grep ec2metaproxy
 
 docker: builder runner
+
+docker_latest:
+	@GIT_REF=HEAD TAG=latest $(MAKE) -f $(THIS_FILE) docker
