@@ -1,4 +1,4 @@
-.PHONY: build install autolint clean test
+.PHONY: build install autolint clean test builder runner
 
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 ROOT_DIR = $(shell pwd)
@@ -10,17 +10,13 @@ BUILD_TIME=$(shell date +%FT%T%z)
 PKG_PATH=github.com/codeactual/ec2metaproxy
 LDFLAGS=-ldflags "-X ${PKG_PATH}/version.SCM=${GIT_REF_SHA}-${GIT_REF_LABEL}${GIT_DIRTY} -X ${PKG_PATH}/version.BuildTime=${BUILD_TIME}"
 
-precheck:
-ifneq ($(CGO_ENABLED),0)
-	$(error precheck: CGO_ENABLED is not 0 in environment)
-endif
-
 build:
 	@mkdir -p build
-	@go build ${LDFLAGS} -v -o build/ec2metaproxy
+	@CGO_ENABLED=0 go build ${LDFLAGS} -v -o build/ec2metaproxy
+	ls -la build
 
 install:
-	@go install ${LDFLAGS} .
+	@CGO_ENABLED=0 go install ${LDFLAGS} .
 
 autolint:
 	@reflex -c reflex.conf
@@ -31,4 +27,12 @@ clean:
 test:
 	@CGO_ENABLED=1 go test -v -race github.com/codeactual/ec2metaproxy/proxy
 
--include precheck
+builder:
+	@docker build --rm -t ec2metaproxy:builder --build-arg GIT_REF=$(GIT_REF) --no-cache -f Dockerfile.build .
+	@docker images | grep ec2metaproxy
+
+runner:
+	@docker run --rm ec2metaproxy:builder  | docker build --rm -t ec2metaproxy:$(TAG) --no-cache -f Dockerfile.run -
+	@docker images | grep ec2metaproxy
+
+docker: builder runner

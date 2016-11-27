@@ -1,15 +1,18 @@
-FROM golang:1.6-alpine
+FROM golang:1.7.3-alpine
 
-MAINTAINER Cory Thomas <cthomas7577@gmail.com>
+ARG GIT_REF
+ARG CGO_ENABLED=0
 
-ENV GOTOOLS=/gotools
+COPY Dockerfile.run /go/bin/Dockerfile.run
 
-ENV PATH $GOTOOLS/bin:$PATH
+RUN if [ -z "${GIT_REF}" ]; then echo -e "\n--build-arg GIT_REF=<ref> is required.\n"; exit 1; fi \
+    && apk add --no-cache git make \
+    && mkdir -p ${GOPATH}/src/github.com/codeactual \
+    && cd ${GOPATH}/src/github.com/codeactual \
+    && git clone https://github.com/codeactual/ec2metaproxy \
+    && cd ec2metaproxy \
+    && git checkout ${GIT_REF} \
+    && make install \
+    && rm -rf ${GOPATH}/src ${GOPATH}/pkg
 
-RUN apk add --no-cache git make                                 \
-    &&                                                          \
-    GOPATH=$GOTOOLS go get -u github.com/golang/lint/golint     \
-    &&                                                          \
-    GOPATH=$GOTOOLS go get -u github.com/kardianos/govendor     \
-    &&                                                          \
-    rm -rf $GOTOOLS/pkg $GOTOOLS/src
+CMD tar -cf - -C ${GOPATH}/bin ec2metaproxy Dockerfile.run
