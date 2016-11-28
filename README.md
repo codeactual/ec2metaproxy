@@ -1,3 +1,5 @@
+# ec2metaproxy [![GoDoc](https://godoc.org/github.com/codeactual/ec2metaproxy/proxy?status.svg)](https://godoc.org/github.com/codeactual/ec2metaproxy/proxy) [![Go Report Card](https://goreportcard.com/badge/github.com/codeactual/ec2metaproxy)](https://goreportcard.com/report/github.com/codeactual/ec2metaproxy)
+
 A service that runs on an EC2 instance that proxies the EC2 instance metadata service
 for Docker containers. The proxy overrides metadata endpoints for individual
 containers via `iptables`.
