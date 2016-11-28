@@ -1,10 +1,6 @@
 A service that runs on an EC2 instance that proxies the EC2 instance metadata service
-for linux containers. The proxy overrides metadata endpoints for individual
-containers.
-
-The following container platforms are supported:
-
-- [docker](https://www.docker.com)
+for Docker containers. The proxy overrides metadata endpoints for individual
+containers via `iptables`.
 
 At this point, the only endpoint overridden is the security credentials. This allows
 for different containers to have different IAM permissions and not just use the permissions
