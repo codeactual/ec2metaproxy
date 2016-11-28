@@ -170,9 +170,5 @@ metadata proxy in a docker container. The script sets up the container
 to auto-restart and run as a daemon.
 
 ```bash
-./run-docker.sh --default-iam-role "arn:aws:iam::123456789012:role/DefaultRole"
+./run-docker.sh --config config.json
 ```
-
-## Flynn
-
-TODO
