@@ -19,6 +19,12 @@ install:
 	@CGO_ENABLED=0 go install ${LDFLAGS} .
 
 autolint:
+	@# `make install` as hack to update so linters use fresh object files.
+	@# Ensure cgo is enabled to avoid file permission issues under /usr/local/go.
+	@CGO_ENABLED=1 go install ${LDFLAGS} .
+	@gometalinter --vendor --concurrency=2 --deadline=60s --disable=aligncheck $(DIR) | head -n 15
+
+watch:
 	@reflex -c reflex.conf
 
 clean:
