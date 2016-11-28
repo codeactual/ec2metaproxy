@@ -55,44 +55,17 @@ See:
 
 - [Docker Container Setup](docs/docker-container-setup.md)
 
+# Walkthrough
+
 ## Build
 
-### Binary only
+Options:
 
-    make build
+1. Binary only from current git clone: `make build`
+1. Docker image `ec2metaproxy:latest` from `HEAD`: `make docker_latest`
+1. Docker image with [customization](docs/build.md): `GIT_REF=efd25a2 TAG=1.0 make docker`
 
-### Docker (quick)
-
-    make docker_latest
-
-This will create an `ec2metaproxy:latest` image from this repository's `HEAD`.
-
-### Docker (w/ configuration)
-
-    GIT_REF=HEAD TAG=latest make docker
-
-- `GIT_REF`: a commit from this repository
-- `TAG`: a value of `latest` will create the Docker image `ec2metaproxy:latest`
-
-> The above command will follow an [approach](https://joeshaw.org/smaller-docker-containers-for-go-apps/) creates two images but allows us to isolate the entire process inside containers.
-
-If we look inside the `Makefile`, the process consists of two steps.
-
-First, we make "builder" image, `ec2metaproxy:builder` whose containers will just emit a `tar` to `STDOUT`. The `tar` will contain two files: `Dockerfile.run` and the `ec2metaproxy` binary.
-
-It emits `tar` to take advantage of the `docker build` feature which supports passing the `Dockerfile` and context over `STDIN`.
-
-    GIT_REF=HEAD make builder
-    docker images | grep "ec2metaproxy.*builder"
-
-Second, we make the image to actually run `ec2metaproxy`.
-
-    TAG=latest make runner
-    docker images | grep "ec2metaproxy.*latest"
-
-# Run
-
-### Configuration File
+## Create a JSON config file
 
 Example that specifies all settings:
 
@@ -113,18 +86,18 @@ Required settings:
 - `aliasToARN`
 - `defaultAlias`
 
-## Basic
+## Forward traffic from containers to the proxy
 
-    ec2metaproxy -c /path/to/config.json
+     ./scripts/setup-firewall.sh --container-iface docker0 --proxy-port 18000
 
-## Docker
+ See `--help` for additional flags.
 
-    docker run -d --net=host --rm -v /var/run/docker.sock:/var/run/docker.sock -v /path/to/config.json:/config.json:ro -p 18000:18000 ec2metaproxy:latest /config.json
+## Run
 
-This example assumes:
+Options:
 
-- The image was built using `make docker` with `TAG=latest`.
-- `iptables` and `config.json` were updated to use port `18000`.
+1. Binary only: `ec2metaproxy -c /path/to/config.json`
+1. Docker: `./scripts/run-docker.sh --config config.json` (see `--help` for additional flags)
 
 # Dependencies
 
