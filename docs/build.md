@@ -12,10 +12,10 @@ This will create an `ec2metaproxy:latest` image from this repository's `HEAD`.
 
 ## Customized
 
-    GIT_REF=HEAD TAG=latest make docker
+    GIT_REF=efd25a2 TAG=1.0 make docker
 
 - `GIT_REF`: a commit from this repository
-- `TAG`: a value of `latest` will create the Docker image `ec2metaproxy:latest`
+- `TAG`: a value of `1.0` will create the Docker image `ec2metaproxy:1.0`
 
 > The above command will follow an [approach](https://joeshaw.org/smaller-docker-containers-for-go-apps/) creates two images but allows us to isolate the entire process inside containers.
 
@@ -25,11 +25,9 @@ First, we make "builder" image, `ec2metaproxy:builder` whose containers will jus
 
 It emits `tar` to take advantage of the `docker build` feature which supports passing the `Dockerfile` and context over `STDIN`.
 
-    GIT_REF=HEAD make builder
-    docker images | grep "ec2metaproxy.*builder"
+    GIT_REF=efd25a2 make builder
 
 Second, we make the image to actually run `ec2metaproxy`.
 
-    TAG=latest make runner
-    docker images | grep "ec2metaproxy.*latest"
+    TAG=1.0 make runner
 

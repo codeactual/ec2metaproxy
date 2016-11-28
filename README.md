@@ -96,7 +96,7 @@ Required settings:
 
 Options:
 
-1. Binary only: `ec2metaproxy -c /path/to/config.json`
+1. Binary only: `ec2metaproxy -c config.json`
 1. Docker: `./scripts/run-docker.sh --config config.json` (see `--help` for additional flags)
 
 # Dependencies
