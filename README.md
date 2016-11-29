@@ -97,6 +97,12 @@ Options:
 1. Binary only: `ec2metaproxy -c config.json`
 1. Docker: `./scripts/run-docker.sh --config config.json` (see `--help` for additional flags)
 
+# Tests
+
+## Run
+
+    make test
+
 # Dependencies
 
 - https://github.com/aws/aws-sdk-go (Apache 2.0, vendored)
