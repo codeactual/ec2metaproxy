@@ -43,7 +43,7 @@ type Proxy struct {
 // config := proxy.Config{ ... }
 // p, err := proxy.New(config, sts.New(session.New()), logger)
 //
-func New(config Config, stsSvc stsiface.STSAPI, logger *log.Logger) (*Proxy, error) {
+func New(config Config, stsSvc stsiface.STSAPI, containerSvc containerService, logger *log.Logger) (*Proxy, error) {
 	if logger == nil {
 		logger = log.New(new(nopWriter), "", log.LstdFlags)
 	}
@@ -53,13 +53,8 @@ func New(config Config, stsSvc stsiface.STSAPI, logger *log.Logger) (*Proxy, err
 		return nil, errors.Wrap(err, "Error configuring proxy")
 	}
 
-	platform, err := newDockerContainerService(config.DockerHost, config.AliasToARN, logger)
-	if err != nil {
-		return nil, errors.Wrap(err, "Error creating proxy's container service")
-	}
-
 	p := Proxy{
-		credsProvider: newCredentialsProvider(stsSvc, platform, defaultIamRole, config.DefaultPolicy),
+		credsProvider: newCredentialsProvider(stsSvc, containerSvc, defaultIamRole, config.DefaultPolicy),
 		httpClient:    &http.Transport{},
 		log:           logger,
 		config:        config,

@@ -19,6 +19,8 @@ type dockerContainerInfo struct {
 	RefreshTime time.Time
 }
 
+// dockerContainerService queries the Docker daemon and maintains a mapping of IPs
+// to container details.
 type dockerContainerService struct {
 	containerIPMap map[string]dockerContainerInfo
 	aliasToARN     map[string]string
@@ -26,21 +28,22 @@ type dockerContainerService struct {
 	log            *log.Logger
 }
 
-func newDockerContainerService(endpoint string, aliasToARN map[string]string, logger *log.Logger) (*dockerContainerService, error) {
-	if endpoint != "" {
-		err := os.Setenv("DOCKER_HOST", endpoint)
+// NewDockerContainerService creates a Docker specific containerService implementation.
+func NewDockerContainerService(config Config, logger *log.Logger) (*dockerContainerService, error) {
+	if config.DockerHost != "" {
+		err := os.Setenv("DOCKER_HOST", config.DockerHost)
 		if err != nil {
-			return nil, errors.Wrapf(err, "Error setting DOCKER_HOST [%s]", endpoint)
+			return nil, errors.Wrapf(err, "Error setting DOCKER_HOST [%s]", config.DockerHost)
 		}
-		logger.Printf("DOCKER_HOST is now [%s]", endpoint)
+		logger.Printf("DOCKER_HOST is now [%s]", config.DockerHost)
 	}
 
 	c, err := client.NewEnvClient()
 	if err != nil {
-		return nil, errors.Wrapf(err, "Error creating docker client with endpoint [%s]", endpoint)
+		return nil, errors.Wrapf(err, "Error creating docker client with endpoint [%s]", config.DockerHost)
 	}
 	return &dockerContainerService{
-		aliasToARN:     aliasToARN,
+		aliasToARN:     config.AliasToARN,
 		containerIPMap: make(map[string]dockerContainerInfo),
 		docker:         c,
 		log:            logger,
@@ -68,7 +71,7 @@ func (d *dockerContainerService) ContainerForIP(ctx context.Context, containerIP
 	}
 
 	if !found {
-		return containerInfo{}, errors.Errorf("No container found for IP %s", containerIP)
+		return containerInfo{}, errors.Errorf("No container found for IP [%s]", containerIP)
 	}
 
 	return info.containerInfo, nil
