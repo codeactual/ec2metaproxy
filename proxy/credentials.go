@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go/service/sts/stsiface"
 	"github.com/pkg/errors"
 )
 
@@ -58,17 +58,17 @@ func (c containerCredentials) IsValid(container containerInfo) bool {
 
 type credentialsProvider struct {
 	container            containerService
-	awsSts               *sts.STS
+	awsSts               stsiface.STSAPI
 	defaultIamRoleArn    roleArn
 	defaultIamPolicy     string
 	containerCredentials map[string]containerCredentials
 	lock                 sync.Mutex
 }
 
-func newCredentialsProvider(awsSession *session.Session, container containerService, defaultIamRoleArn roleArn, defaultIamPolicy string) *credentialsProvider {
+func newCredentialsProvider(stsSvc stsiface.STSAPI, container containerService, defaultIamRoleArn roleArn, defaultIamPolicy string) *credentialsProvider {
 	return &credentialsProvider{
 		container:            container,
-		awsSts:               sts.New(awsSession),
+		awsSts:               stsSvc,
 		defaultIamRoleArn:    defaultIamRoleArn,
 		defaultIamPolicy:     defaultIamPolicy,
 		containerCredentials: make(map[string]containerCredentials),

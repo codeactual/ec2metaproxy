@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/codeactual/ec2metaproxy/proxy"
 )
 
@@ -16,7 +18,7 @@ func main() {
 
 	logger := log.New(os.Stdout, "ec2metaproxy ", log.LstdFlags|log.LUTC)
 
-	p, initErr := proxy.New(config, logger)
+	p, initErr := proxy.New(config, sts.New(session.New()), logger)
 	if initErr != nil {
 		log.Fatalf("Error creating proxy: %+v", initErr)
 	}

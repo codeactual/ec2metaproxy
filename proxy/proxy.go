@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sts/stsiface"
 	"github.com/pkg/errors"
 )
 
@@ -38,7 +38,12 @@ type Proxy struct {
 }
 
 // New creates a Proxy instance using the given configuration.
-func New(config Config, logger *log.Logger) (*Proxy, error) {
+//
+// logger := log.New(os.Stdout, "ec2metaproxy ", log.LstdFlags|log.LUTC)
+// config := proxy.Config{ ... }
+// p, err := proxy.New(config, sts.New(session.New()), logger)
+//
+func New(config Config, stsSvc stsiface.STSAPI, logger *log.Logger) (*Proxy, error) {
 	if logger == nil {
 		logger = log.New(new(nopWriter), "", log.LstdFlags)
 	}
@@ -54,7 +59,7 @@ func New(config Config, logger *log.Logger) (*Proxy, error) {
 	}
 
 	p := Proxy{
-		credsProvider: newCredentialsProvider(session.New(), platform, defaultIamRole, config.DefaultPolicy),
+		credsProvider: newCredentialsProvider(stsSvc, platform, defaultIamRole, config.DefaultPolicy),
 		httpClient:    &http.Transport{},
 		log:           logger,
 		config:        config,
