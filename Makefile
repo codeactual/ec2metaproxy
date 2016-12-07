@@ -31,7 +31,7 @@ clean:
 	@go clean -i
 
 test:
-	@CGO_ENABLED=1 go test -v -race github.com/codeactual/ec2metaproxy/proxy
+	@CGO_ENABLED=1 go test -v -race -timeout 5s github.com/codeactual/ec2metaproxy/proxy
 
 builder:
 	@docker build --rm -t ec2metaproxy:builder --build-arg GIT_REF=$(GIT_REF) --no-cache -f Dockerfile.build .
