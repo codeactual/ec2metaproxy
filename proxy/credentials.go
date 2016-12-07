@@ -97,10 +97,10 @@ func (c *credentialsProvider) CredentialsForIP(ctx context.Context, containerIP 
 
 		if arn.Empty() {
 			arn = c.defaultIamRoleArn
+		}
 
-			if len(iamPolicy) == 0 {
-				iamPolicy = c.defaultIamPolicy
-			}
+		if len(iamPolicy) == 0 {
+			iamPolicy = c.defaultIamPolicy
 		}
 
 		role, err := c.AssumeRole(arn, iamPolicy, generateSessionName(c.container.TypeName(), container.ID))

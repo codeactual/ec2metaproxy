@@ -18,7 +18,12 @@ func main() {
 
 	logger := log.New(os.Stdout, "ec2metaproxy ", log.LstdFlags|log.LUTC)
 
-	p, initErr := proxy.New(config, sts.New(session.New()), logger)
+	containerSvc, dockerErr := proxy.NewDockerContainerService(config, logger)
+	if dockerErr != nil {
+		log.Fatalf("Error creating Docker service: %+v", dockerErr)
+	}
+
+	p, initErr := proxy.New(config, sts.New(session.New()), containerSvc, logger)
 	if initErr != nil {
 		log.Fatalf("Error creating proxy: %+v", initErr)
 	}

@@ -43,23 +43,23 @@ type Proxy struct {
 // config := proxy.Config{ ... }
 // p, err := proxy.New(config, sts.New(session.New()), logger)
 //
-func New(config Config, stsSvc stsiface.STSAPI, logger *log.Logger) (*Proxy, error) {
+func New(config Config, stsSvc stsiface.STSAPI, containerSvc containerService, logger *log.Logger) (*Proxy, error) {
 	if logger == nil {
 		logger = log.New(new(nopWriter), "", log.LstdFlags)
 	}
 
-	defaultIamRole, err := newRoleArn(config.AliasToARN[config.DefaultAlias])
-	if err != nil {
-		return nil, errors.Wrap(err, "Error configuring proxy")
-	}
+	var defaultIamRole roleArn
+	var err error
 
-	platform, err := newDockerContainerService(config.DockerHost, config.AliasToARN, logger)
-	if err != nil {
-		return nil, errors.Wrap(err, "Error creating proxy's container service")
+	if config.DefaultAlias != "" {
+		defaultIamRole, err = newRoleArn(config.AliasToARN[config.DefaultAlias])
+		if err != nil {
+			return nil, errors.Wrap(err, "Error configuring proxy")
+		}
 	}
 
 	p := Proxy{
-		credsProvider: newCredentialsProvider(stsSvc, platform, defaultIamRole, config.DefaultPolicy),
+		credsProvider: newCredentialsProvider(stsSvc, containerSvc, defaultIamRole, config.DefaultPolicy),
 		httpClient:    &http.Transport{},
 		log:           logger,
 		config:        config,
@@ -172,7 +172,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		if writeErr != nil {
 			p.log.Printf("HandleCredentials (%s): Error writing role name to response: %+v", reqID, writeErr)
 		}
-	} else if !strings.HasPrefix(subpath, roleName) || (len(subpath) > len(roleName) && subpath[len(roleName)-1] != '/') {
+	} else if roleName == "" || (!strings.HasPrefix(subpath, roleName) || (len(subpath) > len(roleName) && subpath[len(roleName)-1] != '/')) {
 		// An idiosyncrasy of the standard EC2 metadata service:
 		// Subpaths of the role name are ignored. So long as the correct role name is provided,
 		// it can be followed by a slash and anything after the slash is ignored.

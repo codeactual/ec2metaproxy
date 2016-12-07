@@ -1,0 +1,56 @@
+package proxy
+
+import (
+	"bytes"
+	"log"
+	"net/http"
+	"net/http/httptest"
+
+	"github.com/pkg/errors"
+)
+
+type logger struct {
+	logger *log.Logger
+	events []string
+}
+
+func newLogger() *logger {
+	l := logger{
+		events: []string{},
+	}
+	l.logger = log.New(&l, "", 0)
+	return &l
+}
+
+func (l *logger) Write(p []byte) (n int, err error) {
+	l.events = append(l.events, string(bytes.TrimSpace(p)))
+	return len(p), nil
+}
+
+// stubRequest performs a GET against a new Proxy instance using the provided stubs.
+//
+// The pathSpec argument, ex. "/", is used to create the http.Handle and should match
+// a use case like the one in main.go. The pathReq argument is the path to request.
+// The separation allows us simulate mismatches for cases like 404.
+func stubRequest(pathSpec, pathReq string, config Config, stsSvc *assumeRoleStub, containerSvc containerService, clientIP string) (*httptest.ResponseRecorder, []string, error) {
+	l := newLogger()
+
+	p, initErr := New(config, stsSvc, containerSvc, l.logger)
+	if initErr != nil {
+		return nil, nil, errors.Wrap(initErr, "failed to create proxy")
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle(pathSpec, RequestID(p))
+
+	req, err := http.NewRequest("GET", pathReq, nil)
+	req.RemoteAddr = clientIP
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to request [%s] from [%s] handler", pathReq, pathSpec)
+	}
+
+	recorder := httptest.NewRecorder()
+	p.ServeHTTP(recorder, req)
+
+	return recorder, l.events, nil
+}

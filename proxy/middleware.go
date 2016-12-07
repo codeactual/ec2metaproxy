@@ -63,7 +63,14 @@ func newContextWithRequestID(ctx context.Context, req *http.Request) context.Con
 }
 
 func requestIDFromContext(ctx context.Context) string {
-	return ctx.Value(requestIDContextKey).(string)
+	if ctx == nil {
+		return ""
+	}
+	val := ctx.Value(requestIDContextKey)
+	if val == nil {
+		return ""
+	}
+	return val.(string)
 }
 
 // RequestID is a middleware that injects a request ID into the context of each

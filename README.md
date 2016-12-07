@@ -1,4 +1,4 @@
-# ec2metaproxy [![GoDoc](https://godoc.org/github.com/codeactual/ec2metaproxy/proxy?status.svg)](https://godoc.org/github.com/codeactual/ec2metaproxy/proxy) [![Go Report Card](https://goreportcard.com/badge/github.com/codeactual/ec2metaproxy)](https://goreportcard.com/report/github.com/codeactual/ec2metaproxy)
+# ec2metaproxy [![GoDoc](https://godoc.org/github.com/codeactual/ec2metaproxy/proxy?status.svg)](https://godoc.org/github.com/codeactual/ec2metaproxy/proxy) [![Go Report Card](https://goreportcard.com/badge/github.com/codeactual/ec2metaproxy)](https://goreportcard.com/report/github.com/codeactual/ec2metaproxy) [![Build Status](https://travis-ci.org/codeactual/ec2metaproxy.png)](https://travis-ci.org/codeactual/ec2metaproxy)
 
 A service that runs on an EC2 instance that proxies the EC2 instance metadata service
 for Docker containers. The proxy overrides metadata endpoints for individual
@@ -24,6 +24,7 @@ Goals of this https://github.com/dump247/ec2metaproxy fork:
   - Use docker's built-in [labels](https://docs.docker.com/search/?q=container+labels) to store the aliases.
 - Reduce dependencies in favor of `log`, `flag`, and the official docker client package.
 - Refactor most of the project into its `proxy` package where `main()` is just a client.
+- Improve test coverage.
 - Reduce `panic` use to only `rand.Read` errors on `proxy` package `init()`.
 - Remove `flynn` support since I cannot regularly test/maintain correctness.
 - Add optional HTTP request/response logs.
@@ -96,6 +97,12 @@ Options:
 
 1. Binary only: `ec2metaproxy -c config.json`
 1. Docker: `./scripts/run-docker.sh --config config.json` (see `--help` for additional flags)
+
+# Tests
+
+## Run
+
+    make test
 
 # Dependencies
 
