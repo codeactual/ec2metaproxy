@@ -172,7 +172,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		if writeErr != nil {
 			p.log.Printf("HandleCredentials (%s): Error writing role name to response: %+v", reqID, writeErr)
 		}
-	} else if !strings.HasPrefix(subpath, roleName) || (len(subpath) > len(roleName) && subpath[len(roleName)-1] != '/') {
+	} else if roleName == "" || (!strings.HasPrefix(subpath, roleName) || (len(subpath) > len(roleName) && subpath[len(roleName)-1] != '/')) {
 		// An idiosyncrasy of the standard EC2 metadata service:
 		// Subpaths of the role name are ignored. So long as the correct role name is provided,
 		// it can be followed by a slash and anything after the slash is ignored.
