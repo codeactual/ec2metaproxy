@@ -8,13 +8,20 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
+	"github.com/pkg/errors"
 )
 
 const (
-	defaultPathSpec     = "/"
-	defaultPathReqBase  = "/latest/meta-data/iam/security-credentials"
-	defaultPathReq      = defaultPathReqBase + "/NoPerms"
-	defaultCustomPolicy = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds:DescribeDBInstances", "rds:DescribeDBClusters"],"Resource":["*"]}]}`
+	defaultIP                  = "172.21.0.2"
+	ipWithNoLabels             = "172.21.0.3"
+	ipWithAllLabels            = "172.21.0.4"
+	defaultRoleARNFriendlyName = "NoPerms"
+	dbRoleARNFriendlyName      = "SomethingDB"
+	defaultPathSpec            = "/"
+	defaultPathReqBase         = "/latest/meta-data/iam/security-credentials"
+	defaultPathReq             = defaultPathReqBase + "/" + defaultRoleARNFriendlyName
+	defaultCustomPolicy        = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds:DescribeDBInstances", "rds:DescribeDBClusters"],"Resource":["*"]}]}`
+	defaultPolicy              = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ec2:DescribeInstances"],"Resource":["*"]}]}`
 )
 
 type assumeRoleFn func(*sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
@@ -49,13 +56,12 @@ func newAssumeRoleStubReturns(output *sts.AssumeRoleOutput, err error) *assumeRo
 func defaultConfig() Config {
 	return Config{
 		AliasToARN: map[string]string{
-			"noperms": "arn:aws:iam::123456789012:role/NoPerms",
-			"db":      "arn:aws:iam::123456789012:role/SomethingDB",
+			"noperms": "arn:aws:iam::123456789012:role/" + defaultRoleARNFriendlyName,
+			"db":      "arn:aws:iam::123456789012:role/" + dbRoleARNFriendlyName,
 		},
-		DefaultAlias:  "noperms",
-		DefaultPolicy: `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ec2:DescribeInstances"],"Resource":["*"]}]}`,
-		DockerHost:    "unix:///var/run/alt-docker.sock",
-		ListenAddr:    ":20000",
+		DefaultAlias: "noperms",
+		DockerHost:   "unix:///var/run/alt-docker.sock",
+		ListenAddr:   ":20000",
 	}
 }
 
@@ -76,26 +82,32 @@ func defaultStsSvcStub() *assumeRoleStub {
 	return newAssumeRoleStubReturns(defaultAssumeRoleOutput(), nil)
 }
 
-func defaultIP() string {
-	return "172.21.0.2"
-}
-
 func defaultIPContainerInfo() ipContainerInfo {
-	arn, err := newRoleArn(defaultConfig().AliasToARN["noperms"])
+	noPermsARN, err := newRoleArn(defaultConfig().AliasToARN["noperms"])
+	if err != nil {
+		panic(fmt.Sprintf("invalid ARN in test fixtures: %+v", err))
+	}
+
+	dbARN, err := newRoleArn(defaultConfig().AliasToARN["db"])
 	if err != nil {
 		panic(fmt.Sprintf("invalid ARN in test fixtures: %+v", err))
 	}
 
 	return ipContainerInfo{
-		defaultIP(): containerInfo{
-			ID:        "container_0_a975a907324c3d17c92210df4379da3d5964535134a1c42cce580767f615d87d",
-			Name:      "container_0_name",
-			IamRole:   arn,
-			IamPolicy: defaultCustomPolicy,
+		defaultIP: containerInfo{
+			ID:      "container_0_a975a907324c3d17c92210df4379da3d5964535134a1c42cce580767f615d87d",
+			Name:    "container_0_name",
+			IamRole: noPermsARN,
 		},
-		"172.17.0.3": containerInfo{
+		ipWithNoLabels: containerInfo{
 			ID:   "container_1_c8edc0715432097101f0e958b61f96412f91fa10e2a29814226cce097dc56b2f",
 			Name: "container_1_name",
+		},
+		ipWithAllLabels: containerInfo{
+			ID:        "container_2_30b00758601e903b4a3603bd59bfe15d4d165a33925afe52311f77a8ca02461a",
+			Name:      "container_2_name",
+			IamRole:   dbARN,
+			IamPolicy: defaultCustomPolicy,
 		},
 	}
 }
@@ -108,13 +120,15 @@ func defaultContainerSvcStub() *containerServiceStub {
 func stringsEqual(t *testing.T, pairs [][2]string) {
 	for _, v := range pairs {
 		if v[0] != v[1] {
-			t.Fatalf("expected [%s], got [%s]", v[0], v[1])
+			// Use %+v and Errorf to get a stack trace
+			t.Fatalf("%+v", errors.Errorf("expected [%s], got [%s]", v[0], v[1]))
 		}
 	}
 }
 
 func fatalOnErr(t *testing.T, err error) {
 	if err != nil {
-		t.Fatalf("unexpected error: %+v", err)
+		// Use %+v and Wrap to get a stack trace
+		t.Fatalf("%+v", errors.Wrap(err, "unexpected error in test case"))
 	}
 }

@@ -40,7 +40,8 @@ func stubRequest(pathSpec, pathReq string, config Config, stsSvc *assumeRoleStub
 		return nil, nil, errors.Wrap(initErr, "failed to create proxy")
 	}
 
-	http.Handle(pathSpec, RequestID(p))
+	mux := http.NewServeMux()
+	mux.Handle(pathSpec, RequestID(p))
 
 	req, err := http.NewRequest("GET", pathReq, nil)
 	req.RemoteAddr = clientIP
