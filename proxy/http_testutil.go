@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -27,6 +28,20 @@ func (l *logger) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+type roundTripperStub struct {
+	req *http.Request
+	res *http.Response
+	err error
+}
+
+func (r roundTripperStub) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.req = req
+	if r.res == nil {
+		return nil, errors.New("undefined response in HTTP client stub")
+	}
+	return r.res, r.err
+}
+
 // stubRequest performs a GET against a new Proxy instance using the provided stubs.
 //
 // The pathSpec argument, ex. "/", is used to create the http.Handle and should match
@@ -35,19 +50,27 @@ func (l *logger) Write(p []byte) (n int, err error) {
 func stubRequest(pathSpec, pathReq string, config Config, stsSvc *assumeRoleStub, containerSvc containerService, clientIP string) (*httptest.ResponseRecorder, []string, error) {
 	l := newLogger()
 
-	p, initErr := New(config, stsSvc, containerSvc, l.logger)
+	req, err := http.NewRequest("GET", pathReq, nil)
+	req.RemoteAddr = clientIP
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to request [%s] from [%s] handler", pathReq, pathSpec)
+	}
+
+	httpClient := roundTripperStub{
+		req: req,
+		res: &http.Response{
+			Body:       ioutil.NopCloser(nil),
+			StatusCode: 200,
+		},
+	}
+
+	p, initErr := New(config, httpClient, stsSvc, containerSvc, l.logger)
 	if initErr != nil {
 		return nil, nil, errors.Wrap(initErr, "failed to create proxy")
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle(pathSpec, RequestID(p))
-
-	req, err := http.NewRequest("GET", pathReq, nil)
-	req.RemoteAddr = clientIP
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to request [%s] from [%s] handler", pathReq, pathSpec)
-	}
 
 	recorder := httptest.NewRecorder()
 	p.ServeHTTP(recorder, req)

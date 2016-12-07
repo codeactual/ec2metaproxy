@@ -31,7 +31,7 @@ type metadataCredentials struct {
 // containers to the roles identified in their (docker) metadata, caching of
 // container/credential information, and (optional) operational logging.
 type Proxy struct {
-	httpClient    *http.Transport
+	httpClient    http.RoundTripper
 	credsProvider *credentialsProvider
 	config        Config
 	log           *log.Logger
@@ -43,7 +43,7 @@ type Proxy struct {
 // config := proxy.Config{ ... }
 // p, err := proxy.New(config, sts.New(session.New()), logger)
 //
-func New(config Config, stsSvc stsiface.STSAPI, containerSvc containerService, logger *log.Logger) (*Proxy, error) {
+func New(config Config, httpClient http.RoundTripper, stsSvc stsiface.STSAPI, containerSvc containerService, logger *log.Logger) (*Proxy, error) {
 	if logger == nil {
 		logger = log.New(new(nopWriter), "", log.LstdFlags)
 	}
@@ -60,7 +60,7 @@ func New(config Config, stsSvc stsiface.STSAPI, containerSvc containerService, l
 
 	p := Proxy{
 		credsProvider: newCredentialsProvider(stsSvc, containerSvc, defaultIamRole, config.DefaultPolicy),
-		httpClient:    &http.Transport{},
+		httpClient:    httpClient,
 		log:           logger,
 		config:        config,
 	}

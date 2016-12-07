@@ -23,7 +23,7 @@ func main() {
 		log.Fatalf("Error creating Docker service: %+v", dockerErr)
 	}
 
-	p, initErr := proxy.New(config, sts.New(session.New()), containerSvc, logger)
+	p, initErr := proxy.New(config, &http.Transport{}, sts.New(session.New()), containerSvc, logger)
 	if initErr != nil {
 		log.Fatalf("Error creating proxy: %+v", initErr)
 	}
