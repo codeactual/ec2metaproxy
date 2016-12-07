@@ -48,9 +48,14 @@ func New(config Config, stsSvc stsiface.STSAPI, containerSvc containerService, l
 		logger = log.New(new(nopWriter), "", log.LstdFlags)
 	}
 
-	defaultIamRole, err := newRoleArn(config.AliasToARN[config.DefaultAlias])
-	if err != nil {
-		return nil, errors.Wrap(err, "Error configuring proxy")
+	var defaultIamRole roleArn
+	var err error
+
+	if config.DefaultAlias != "" {
+		defaultIamRole, err = newRoleArn(config.AliasToARN[config.DefaultAlias])
+		if err != nil {
+			return nil, errors.Wrap(err, "Error configuring proxy")
+		}
 	}
 
 	p := Proxy{
