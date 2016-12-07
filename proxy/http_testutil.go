@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -59,7 +60,7 @@ func stubRequest(pathSpec, pathReq string, config Config, stsSvc *assumeRoleStub
 	httpClient := roundTripperStub{
 		req: req,
 		res: &http.Response{
-			Body:       ioutil.NopCloser(nil),
+			Body:       ioutil.NopCloser(strings.NewReader(defaultProxiedBody)),
 			StatusCode: 200,
 		},
 	}

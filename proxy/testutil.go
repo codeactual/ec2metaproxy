@@ -1,7 +1,11 @@
 package proxy
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -22,6 +26,7 @@ const (
 	defaultPathReq             = defaultPathReqBase + "/" + defaultRoleARNFriendlyName
 	defaultCustomPolicy        = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds:DescribeDBInstances", "rds:DescribeDBClusters"],"Resource":["*"]}]}`
 	defaultPolicy              = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ec2:DescribeInstances"],"Resource":["*"]}]}`
+	defaultProxiedBody         = "proxied body"
 )
 
 type assumeRoleFn func(*sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
@@ -114,6 +119,69 @@ func defaultIPContainerInfo() ipContainerInfo {
 
 func defaultContainerSvcStub() *containerServiceStub {
 	return newDockerContainerServiceStub(defaultIPContainerInfo())
+}
+
+func credsEqualDefaults(t *testing.T, body *bytes.Buffer, stsSvc *assumeRoleStub) {
+	var c metadataCredentials
+	err := json.NewDecoder(body).Decode(&c)
+	fatalOnErr(t, err)
+
+	expectedCreds := defaultCreds()
+	stringsEqual(t, [][2]string{
+		[2]string{"Success", c.Code},
+		[2]string{*expectedCreds.AccessKeyId, c.AccessKeyID},
+		[2]string{"AWS-HMAC", c.Type},
+		[2]string{*expectedCreds.SecretAccessKey, c.SecretAccessKey},
+		[2]string{*expectedCreds.SessionToken, c.Token},
+		[2]string{stsSvc.output.Credentials.Expiration.String(), c.Expiration.String()},
+	})
+}
+
+func bodyIsEmpty(t *testing.T, body *bytes.Buffer) {
+	bodyBytes, err := ioutil.ReadAll(body)
+	fatalOnErr(t, err)
+	if len(bodyBytes) != 0 {
+		t.Fatalf("expected empty body, got [%s]", string(bodyBytes))
+	}
+}
+
+func bodyIsNonEmpty(t *testing.T, body *bytes.Buffer) string {
+	bodyBytes, err := ioutil.ReadAll(body)
+	fatalOnErr(t, err)
+	if len(bodyBytes) == 0 {
+		t.Fatal("expected non-empty body")
+	}
+	return string(bodyBytes)
+}
+
+func responseCodeIs(t *testing.T, res *httptest.ResponseRecorder, expected int) {
+	if res.Code != expected {
+		t.Fatalf("expected HTTP code %d, got %d", expected, res.Code)
+	}
+}
+
+func assumeRoleAliasIsEmpty(t *testing.T, stsSvc *assumeRoleStub) {
+	if *stsSvc.input.RoleArn != "" {
+		t.Fatalf("expected assume role to be empty, instead [%s]", *stsSvc.input.RoleArn)
+	}
+}
+
+func assumeRoleAliasIs(t *testing.T, alias string, config Config, stsSvc *assumeRoleStub) {
+	if *stsSvc.input.RoleArn != config.AliasToARN[alias] {
+		t.Fatalf("expected assume role to be [%s] with alias [%s], instead [%s]", config.AliasToARN[alias], alias, *stsSvc.input.RoleArn)
+	}
+}
+
+func assumeRolePolicyIs(t *testing.T, policy string, stsSvc *assumeRoleStub) {
+	if *stsSvc.input.Policy != policy {
+		t.Fatalf("expected policy [%s], got [%s]", policy, *stsSvc.input.Policy)
+	}
+}
+
+func assumeRolePolicyIsNil(t *testing.T, stsSvc *assumeRoleStub) {
+	if stsSvc.input.Policy != nil {
+		t.Fatalf("expected no policy, got [%s]", *stsSvc.input.Policy)
+	}
 }
 
 // StringsEqual asserts all string pairs are equal. In each pair, expected value is first.
