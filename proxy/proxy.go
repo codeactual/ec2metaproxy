@@ -145,6 +145,10 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		return
 	}
 
+	if p.config.Verbose {
+		p.log.Printf("HandleCredentials (%s): UPSTREAM RESPONSE ip [%s] path [%s] code [%d]", reqID, clientIP, awsURL, resp.StatusCode)
+	}
+
 	err = resp.Body.Close()
 	if err != nil {
 		p.log.Printf("HandleCredentials (%s): Error closing credentials response body: %+v", reqID, err)
@@ -166,6 +170,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	}
 
 	roleName := credentials.RoleArn.RoleName()
+	statusCode := http.StatusOK
 
 	if len(subpath) == 0 {
 		_, writeErr := w.Write([]byte(roleName))
@@ -176,7 +181,8 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		// An idiosyncrasy of the standard EC2 metadata service:
 		// Subpaths of the role name are ignored. So long as the correct role name is provided,
 		// it can be followed by a slash and anything after the slash is ignored.
-		w.WriteHeader(http.StatusNotFound)
+		statusCode = http.StatusNotFound
+		w.WriteHeader(statusCode)
 	} else {
 		creds, err := json.Marshal(&metadataCredentials{
 			Code:            "Success",
@@ -190,7 +196,8 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 
 		if err != nil {
 			p.log.Printf("HandleCredentials (%s): Error marshaling credentials: %+v", reqID, err)
-			w.WriteHeader(http.StatusInternalServerError)
+			statusCode = http.StatusInternalServerError
+			w.WriteHeader(statusCode)
 		} else {
 			_, writeErr := w.Write(creds)
 			if writeErr != nil {
@@ -200,7 +207,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	}
 
 	if p.config.Verbose {
-		p.log.Printf("HandleCredentials (%s): PROXY RESPONSE ip [%s] path [%s] role [%s] code [%d]", reqID, clientIP, awsURL, roleName, resp.StatusCode)
+		p.log.Printf("HandleCredentials (%s): PROXY RESPONSE ip [%s] path [%s] role [%s] code [%d]", reqID, clientIP, awsURL, roleName, statusCode)
 	}
 }
 
