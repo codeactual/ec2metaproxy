@@ -15,21 +15,21 @@ import (
 const runningState = "running"
 
 type dockerContainerInfo struct {
-	containerInfo
+	ContainerInfo
 	RefreshTime time.Time
 }
 
-// dockerContainerService queries the Docker daemon and maintains a mapping of IPs
+// DockerContainerService queries the Docker daemon and maintains a mapping of IPs
 // to container details.
-type dockerContainerService struct {
+type DockerContainerService struct {
 	containerIPMap map[string]dockerContainerInfo
 	aliasToARN     map[string]string
 	docker         *client.Client
 	log            *log.Logger
 }
 
-// NewDockerContainerService creates a Docker specific containerService implementation.
-func NewDockerContainerService(config Config, logger *log.Logger) (*dockerContainerService, error) {
+// NewDockerContainerService creates a Docker specific ContainerService implementation.
+func NewDockerContainerService(config Config, logger *log.Logger) (*DockerContainerService, error) {
 	if config.DockerHost != "" {
 		err := os.Setenv("DOCKER_HOST", config.DockerHost)
 		if err != nil {
@@ -42,7 +42,7 @@ func NewDockerContainerService(config Config, logger *log.Logger) (*dockerContai
 	if err != nil {
 		return nil, errors.Wrapf(err, "Error creating docker client with endpoint [%s]", config.DockerHost)
 	}
-	return &dockerContainerService{
+	return &DockerContainerService{
 		aliasToARN:     config.AliasToARN,
 		containerIPMap: make(map[string]dockerContainerInfo),
 		docker:         c,
@@ -50,16 +50,16 @@ func NewDockerContainerService(config Config, logger *log.Logger) (*dockerContai
 	}, nil
 }
 
-// TypeName implements a containerService method.
-func (d *dockerContainerService) TypeName() string {
+// TypeName implements a ContainerService method.
+func (d *DockerContainerService) TypeName() string {
 	return "docker"
 }
 
-// ContainerForIP implements a containerService method.
+// ContainerForIP implements a ContainerService method.
 //
-// If containerInfo exists in the cache, keyed by the container IP, then it is returned.
-// Otherwise syncContainer is used to collect fresh containerInfo from the docker API.
-func (d *dockerContainerService) ContainerForIP(ctx context.Context, containerIP string) (containerInfo, error) {
+// If ContainerInfo exists in the cache, keyed by the container IP, then it is returned.
+// Otherwise syncContainer is used to collect fresh ContainerInfo from the docker API.
+func (d *DockerContainerService) ContainerForIP(ctx context.Context, containerIP string) (ContainerInfo, error) {
 	info, found := d.containerIPMap[containerIP]
 	now := time.Now()
 
@@ -71,13 +71,13 @@ func (d *dockerContainerService) ContainerForIP(ctx context.Context, containerIP
 	}
 
 	if !found {
-		return containerInfo{}, errors.Errorf("No container found for IP [%s]", containerIP)
+		return ContainerInfo{}, errors.Errorf("No container found for IP [%s]", containerIP)
 	}
 
-	return info.containerInfo, nil
+	return info.ContainerInfo, nil
 }
 
-func (d *dockerContainerService) syncContainer(ctx context.Context, containerIP string, oldInfo dockerContainerInfo, now time.Time) (dockerContainerInfo, bool) {
+func (d *DockerContainerService) syncContainer(ctx context.Context, containerIP string, oldInfo dockerContainerInfo, now time.Time) (dockerContainerInfo, bool) {
 	reqID := requestIDFromContext(ctx)
 
 	container, err := d.docker.ContainerInspect(ctx, oldInfo.ID)
@@ -99,7 +99,7 @@ func (d *dockerContainerService) syncContainer(ctx context.Context, containerIP 
 	return oldInfo, true
 }
 
-func (d *dockerContainerService) syncContainers(ctx context.Context, now time.Time) {
+func (d *DockerContainerService) syncContainers(ctx context.Context, now time.Time) {
 	reqID := requestIDFromContext(ctx)
 
 	apiContainers, err := d.docker.ContainerList(ctx, types.ContainerListOptions{})
@@ -137,7 +137,7 @@ func (d *dockerContainerService) syncContainers(ctx context.Context, now time.Ti
 			d.log.Printf("syncContainers (%s): container [%s] %v has an unmapped role alias [%s]", reqID, container.ID, container.Names, alias)
 			continue
 		}
-		role, roleErr := newRoleArn(roleName)
+		role, roleErr := NewRoleARN(roleName)
 		if roleErr != nil {
 			d.log.Printf("syncContainers (%s): Error creating new role ARN with invalid name [%s]: %+v", reqID, role, roleErr)
 			continue
@@ -147,7 +147,7 @@ func (d *dockerContainerService) syncContainers(ctx context.Context, now time.Ti
 			d.log.Printf("syncContainers (%s): id [%s] ip [%s] image [%s] role [%s]", reqID, container.ID[:6], ipAddress, container.Image, role)
 
 			containerIPMap[ipAddress] = dockerContainerInfo{
-				containerInfo: containerInfo{
+				ContainerInfo: ContainerInfo{
 					ID:        container.ID,
 					Name:      strings.Join(container.Names, ","),
 					IamRole:   role,

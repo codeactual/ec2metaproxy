@@ -28,7 +28,7 @@ type credentials struct {
 	AccessKey   string
 	Expiration  time.Time
 	GeneratedAt time.Time
-	RoleArn     roleArn
+	RoleArn     RoleARN
 	SecretKey   string
 	Token       string
 }
@@ -46,26 +46,26 @@ func (c credentials) ExpiresIn(d time.Duration) bool {
 }
 
 type containerCredentials struct {
-	containerInfo
+	ContainerInfo
 	credentials
 }
 
-func (c containerCredentials) IsValid(container containerInfo) bool {
-	return c.containerInfo.IamRole.Equals(container.IamRole) &&
-		c.containerInfo.ID == container.ID &&
+func (c containerCredentials) IsValid(container ContainerInfo) bool {
+	return c.ContainerInfo.IamRole.Equals(container.IamRole) &&
+		c.ContainerInfo.ID == container.ID &&
 		!c.credentials.ExpiresIn(sessionExpiration)
 }
 
 type credentialsProvider struct {
-	container            containerService
+	container            ContainerService
 	awsSts               stsiface.STSAPI
-	defaultIamRoleArn    roleArn
+	defaultIamRoleArn    RoleARN
 	defaultIamPolicy     string
 	containerCredentials map[string]containerCredentials
 	lock                 sync.Mutex
 }
 
-func newCredentialsProvider(stsSvc stsiface.STSAPI, container containerService, defaultIamRoleArn roleArn, defaultIamPolicy string) *credentialsProvider {
+func newCredentialsProvider(stsSvc stsiface.STSAPI, container ContainerService, defaultIamRoleArn RoleARN, defaultIamPolicy string) *credentialsProvider {
 	return &credentialsProvider{
 		container:            container,
 		awsSts:               stsSvc,
@@ -116,7 +116,7 @@ func (c *credentialsProvider) CredentialsForIP(ctx context.Context, containerIP 
 	return oldCredentials.credentials, nil
 }
 
-func (c *credentialsProvider) AssumeRole(role roleArn, iamPolicy, sessionName string) (credentials, error) {
+func (c *credentialsProvider) AssumeRole(role RoleARN, iamPolicy, sessionName string) (credentials, error) {
 	var policy *string
 
 	if len(iamPolicy) > 0 {

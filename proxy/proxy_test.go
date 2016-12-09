@@ -1,134 +1,203 @@
-package proxy
+package proxy_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go/service/sts/stsiface"
+	"github.com/codeactual/ec2metaproxy/proxy"
+	"github.com/pkg/errors"
 )
 
-func TestResponse(t *testing.T) {
-	t.Run("should support alias match with request path", func(t *testing.T) {
-		config := defaultConfig()
-		stsSvc := defaultStsSvcStub()
-		containerSvc := defaultContainerSvcStub()
+const (
+	defaultIP                  = "172.21.0.2"
+	ipWithNoLabels             = "172.21.0.3"
+	ipWithAllLabels            = "172.21.0.4"
+	defaultRoleARNFriendlyName = "NoPerms"
+	dbRoleARNFriendlyName      = "SomethingDB"
+	defaultPathSpec            = "/"
+	defaultPathReqBase         = "/latest/meta-data/iam/security-credentials"
+	defaultPathReq             = defaultPathReqBase + "/" + defaultRoleARNFriendlyName
+	defaultCustomPolicy        = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds:DescribeDBInstances", "rds:DescribeDBClusters"],"Resource":["*"]}]}`
+	defaultPolicy              = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ec2:DescribeInstances"],"Resource":["*"]}]}`
+	defaultProxiedBody         = "proxied body"
+)
 
-		res, _, err := stubRequest(defaultPathSpec, defaultPathReq, config, stsSvc, containerSvc, defaultIP)
-		fatalOnErr(t, err)
+type assumeRoleFn func(*sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
 
-		responseCodeIs(t, res, 200)
-		credsEqualDefaults(t, res.Body, stsSvc)
-		assumeRoleAliasIs(t, "noperms", config, stsSvc)
-		assumeRolePolicyIsNil(t, stsSvc)
+// assumeRoleStub can be passed to proxy.New to avoid real AWS requests, control AssumeRole behavior,
+// and record input.
+type assumeRoleStub struct {
+	stsiface.STSAPI
+	fn     assumeRoleFn
+	input  *sts.AssumeRoleInput
+	output *sts.AssumeRoleOutput
+	err    error
+}
+
+// AssumeROle records input and returns configured output/error.
+func (s *assumeRoleStub) AssumeRole(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {
+	s.input = input
+	output, err := s.fn(input)
+	s.output = output
+	s.err = err
+	return s.output, s.err
+}
+
+func newAssumeRoleStubReturns(output *sts.AssumeRoleOutput, err error) *assumeRoleStub {
+	return &assumeRoleStub{
+		fn: func(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {
+			return output, err
+		},
+	}
+}
+
+func defaultConfig() proxy.Config {
+	return proxy.Config{
+		AliasToARN: map[string]string{
+			"noperms": "arn:aws:iam::123456789012:role/" + defaultRoleARNFriendlyName,
+			"db":      "arn:aws:iam::123456789012:role/" + dbRoleARNFriendlyName,
+		},
+		DefaultAlias: "noperms",
+		DockerHost:   "unix:///var/run/alt-docker.sock",
+		ListenAddr:   ":20000",
+	}
+}
+
+func defaultCreds() *sts.Credentials {
+	return &sts.Credentials{
+		AccessKeyId:     aws.String("fakeAccessKeyId"),
+		Expiration:      aws.Time(time.Now().Add(900 * time.Second)),
+		SecretAccessKey: aws.String("fakeSecretAccessKey"),
+		SessionToken:    aws.String("fakeSessionToken"),
+	}
+}
+
+func defaultAssumeRoleOutput() *sts.AssumeRoleOutput {
+	return &sts.AssumeRoleOutput{Credentials: defaultCreds()}
+}
+
+func defaultStsSvcStub() *assumeRoleStub {
+	return newAssumeRoleStubReturns(defaultAssumeRoleOutput(), nil)
+}
+
+func defaultIPContainerInfo() ipContainerInfo {
+	noPermsARN, err := proxy.NewRoleARN(defaultConfig().AliasToARN["noperms"])
+	if err != nil {
+		panic(fmt.Sprintf("invalid ARN in test fixtures: %+v", err))
+	}
+
+	dbARN, err := proxy.NewRoleARN(defaultConfig().AliasToARN["db"])
+	if err != nil {
+		panic(fmt.Sprintf("invalid ARN in test fixtures: %+v", err))
+	}
+
+	return ipContainerInfo{
+		defaultIP: proxy.ContainerInfo{
+			ID:      "container_0_a975a907324c3d17c92210df4379da3d5964535134a1c42cce580767f615d87d",
+			Name:    "container_0_name",
+			IamRole: noPermsARN,
+		},
+		ipWithNoLabels: proxy.ContainerInfo{
+			ID:   "container_1_c8edc0715432097101f0e958b61f96412f91fa10e2a29814226cce097dc56b2f",
+			Name: "container_1_name",
+		},
+		ipWithAllLabels: proxy.ContainerInfo{
+			ID:        "container_2_30b00758601e903b4a3603bd59bfe15d4d165a33925afe52311f77a8ca02461a",
+			Name:      "container_2_name",
+			IamRole:   dbARN,
+			IamPolicy: defaultCustomPolicy,
+		},
+	}
+}
+
+func defaultContainerSvcStub() *containerServiceStub {
+	return newDockerContainerServiceStub(defaultIPContainerInfo())
+}
+
+func credsEqualDefaults(t *testing.T, body *bytes.Buffer, stsSvc *assumeRoleStub) {
+	var c proxy.MetadataCredentials
+	err := json.NewDecoder(body).Decode(&c)
+	fatalOnErr(t, err)
+
+	expectedCreds := defaultCreds()
+	stringsEqual(t, [][2]string{
+		[2]string{"Success", c.Code},
+		[2]string{*expectedCreds.AccessKeyId, c.AccessKeyID},
+		[2]string{"AWS-HMAC", c.Type},
+		[2]string{*expectedCreds.SecretAccessKey, c.SecretAccessKey},
+		[2]string{*expectedCreds.SessionToken, c.Token},
+		[2]string{stsSvc.output.Credentials.Expiration.String(), c.Expiration.String()},
 	})
+}
 
-	t.Run("should detect alias mismatch with request path", func(t *testing.T) {
-		config := defaultConfig()
-		stsSvc := defaultStsSvcStub()
-		containerSvc := defaultContainerSvcStub()
+func bodyIsEmpty(t *testing.T, body *bytes.Buffer) {
+	bodyBytes, err := ioutil.ReadAll(body)
+	fatalOnErr(t, err)
+	if len(bodyBytes) != 0 {
+		t.Fatalf("expected empty body, got [%s]", string(bodyBytes))
+	}
+}
 
-		res, _, err := stubRequest(defaultPathSpec, defaultPathReqBase+"/invalid", config, stsSvc, containerSvc, defaultIP)
-		fatalOnErr(t, err)
+func bodyIsNonEmpty(t *testing.T, body *bytes.Buffer) string {
+	bodyBytes, err := ioutil.ReadAll(body)
+	fatalOnErr(t, err)
+	if len(bodyBytes) == 0 {
+		t.Fatal("expected non-empty body")
+	}
+	return string(bodyBytes)
+}
 
-		responseCodeIs(t, res, 404)
-		bodyIsEmpty(t, res.Body)
-		assumeRoleAliasIs(t, "noperms", config, stsSvc)
-		assumeRolePolicyIsNil(t, stsSvc)
-	})
+func responseCodeIs(t *testing.T, res *httptest.ResponseRecorder, expected int) {
+	if res.Code != expected {
+		t.Fatalf("expected HTTP code %d, got %d", expected, res.Code)
+	}
+}
 
-	t.Run("should detect request path without role", func(t *testing.T) {
-		config := defaultConfig()
-		stsSvc := defaultStsSvcStub()
-		containerSvc := defaultContainerSvcStub()
+func assumeRoleAliasIsEmpty(t *testing.T, stsSvc *assumeRoleStub) {
+	if *stsSvc.input.RoleArn != "" {
+		t.Fatalf("expected assume role to be empty, instead [%s]", *stsSvc.input.RoleArn)
+	}
+}
 
-		res, _, err := stubRequest(defaultPathSpec, defaultPathReqBase+"/", config, stsSvc, containerSvc, defaultIP)
-		fatalOnErr(t, err)
+func assumeRoleAliasIs(t *testing.T, alias string, config proxy.Config, stsSvc *assumeRoleStub) {
+	if *stsSvc.input.RoleArn != config.AliasToARN[alias] {
+		t.Fatalf("expected assume role to be [%s] with alias [%s], instead [%s]", config.AliasToARN[alias], alias, *stsSvc.input.RoleArn)
+	}
+}
 
-		responseCodeIs(t, res, 200)
-		body := bodyIsNonEmpty(t, res.Body)
+func assumeRolePolicyIs(t *testing.T, policy string, stsSvc *assumeRoleStub) {
+	if *stsSvc.input.Policy != policy {
+		t.Fatalf("expected policy [%s], got [%s]", policy, *stsSvc.input.Policy)
+	}
+}
 
-		if body != defaultRoleARNFriendlyName {
-			t.Fatalf("expected role ARN [%s], got [%s]", defaultRoleARNFriendlyName, body)
+func assumeRolePolicyIsNil(t *testing.T, stsSvc *assumeRoleStub) {
+	if stsSvc.input.Policy != nil {
+		t.Fatalf("expected no policy, got [%s]", *stsSvc.input.Policy)
+	}
+}
+
+// StringsEqual asserts all string pairs are equal. In each pair, expected value is first.
+func stringsEqual(t *testing.T, pairs [][2]string) {
+	for _, v := range pairs {
+		if v[0] != v[1] {
+			// Use %+v and Errorf to get a stack trace
+			t.Fatalf("%+v", errors.Errorf("expected [%s], got [%s]", v[0], v[1]))
 		}
+	}
+}
 
-		assumeRoleAliasIs(t, "noperms", config, stsSvc)
-		assumeRolePolicyIsNil(t, stsSvc)
-	})
-
-	t.Run("should apply default role", func(t *testing.T) {
-		config := defaultConfig()
-		stsSvc := defaultStsSvcStub()
-		containerSvc := defaultContainerSvcStub()
-
-		res, _, err := stubRequest(defaultPathSpec, defaultPathReq, config, stsSvc, containerSvc, ipWithNoLabels)
-		fatalOnErr(t, err)
-
-		responseCodeIs(t, res, 200)
-		credsEqualDefaults(t, res.Body, stsSvc)
-		assumeRoleAliasIs(t, "noperms", config, stsSvc)
-		assumeRolePolicyIsNil(t, stsSvc)
-	})
-
-	t.Run("should apply default policy", func(t *testing.T) {
-		config := defaultConfig()
-		config.DefaultPolicy = defaultPolicy
-
-		stsSvc := defaultStsSvcStub()
-		containerSvc := defaultContainerSvcStub()
-
-		res, _, err := stubRequest(defaultPathSpec, defaultPathReq, config, stsSvc, containerSvc, ipWithNoLabels)
-		fatalOnErr(t, err)
-
-		responseCodeIs(t, res, 200)
-		credsEqualDefaults(t, res.Body, stsSvc)
-		assumeRoleAliasIs(t, "noperms", config, stsSvc)
-		assumeRolePolicyIs(t, defaultPolicy, stsSvc)
-	})
-
-	t.Run("should support custom labels", func(t *testing.T) {
-		config := defaultConfig()
-		stsSvc := defaultStsSvcStub()
-		containerSvc := defaultContainerSvcStub()
-
-		res, _, err := stubRequest(defaultPathSpec, defaultPathReqBase+"/"+dbRoleARNFriendlyName, config, stsSvc, containerSvc, ipWithAllLabels)
-		fatalOnErr(t, err)
-
-		responseCodeIs(t, res, 200)
-		credsEqualDefaults(t, res.Body, stsSvc)
-		assumeRoleAliasIs(t, "db", config, stsSvc)
-		assumeRolePolicyIs(t, defaultCustomPolicy, stsSvc)
-	})
-
-	t.Run("should support no selected defaults", func(t *testing.T) {
-		config := defaultConfig()
-		config.DefaultAlias = ""
-
-		stsSvc := defaultStsSvcStub()
-		containerSvc := defaultContainerSvcStub()
-
-		res, _, err := stubRequest(defaultPathSpec, defaultPathReq, config, stsSvc, containerSvc, ipWithNoLabels)
-		fatalOnErr(t, err)
-
-		responseCodeIs(t, res, 404)
-		bodyIsEmpty(t, res.Body)
-		assumeRoleAliasIsEmpty(t, stsSvc)
-		assumeRolePolicyIsNil(t, stsSvc)
-	})
-
-	t.Run("should proxy non credentials request", func(t *testing.T) {
-		config := defaultConfig()
-		stsSvc := defaultStsSvcStub()
-		containerSvc := defaultContainerSvcStub()
-
-		res, _, err := stubRequest(defaultPathSpec, "/latest/meta-data/local-hostname", config, stsSvc, containerSvc, defaultIP)
-		fatalOnErr(t, err)
-
-		responseCodeIs(t, res, 200)
-
-		bodyBytes, err := ioutil.ReadAll(res.Body)
-		fatalOnErr(t, err)
-		body := string(bodyBytes)
-
-		if body != defaultProxiedBody {
-			t.Fatalf("expected body [%s], got [%s]", defaultProxiedBody, body)
-		}
-	})
+func fatalOnErr(t *testing.T, err error) {
+	if err != nil {
+		// Use %+v and Wrap to get a stack trace
+		t.Fatalf("%+v", errors.Wrap(err, "unexpected error in test case"))
+	}
 }

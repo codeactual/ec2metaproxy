@@ -16,7 +16,8 @@ import (
 
 var credsRegex = regexp.MustCompile("^/(.+?)/meta-data/iam/security-credentials/(.*)$")
 
-type metadataCredentials struct {
+// MetadataCredentials fields are returned in HTTP responses as JSON.
+type MetadataCredentials struct {
 	Code            string
 	LastUpdated     time.Time
 	Type            string
@@ -43,16 +44,16 @@ type Proxy struct {
 // config := proxy.Config{ ... }
 // p, err := proxy.New(config, sts.New(session.New()), logger)
 //
-func New(config Config, httpClient http.RoundTripper, stsSvc stsiface.STSAPI, containerSvc containerService, logger *log.Logger) (*Proxy, error) {
+func New(config Config, httpClient http.RoundTripper, stsSvc stsiface.STSAPI, containerSvc ContainerService, logger *log.Logger) (*Proxy, error) {
 	if logger == nil {
 		logger = log.New(new(nopWriter), "", log.LstdFlags)
 	}
 
-	var defaultIamRole roleArn
+	var defaultIamRole RoleARN
 	var err error
 
 	if config.DefaultAlias != "" {
-		defaultIamRole, err = newRoleArn(config.AliasToARN[config.DefaultAlias])
+		defaultIamRole, err = NewRoleARN(config.AliasToARN[config.DefaultAlias])
 		if err != nil {
 			return nil, errors.Wrap(err, "Error configuring proxy")
 		}
@@ -186,7 +187,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 		statusCode = http.StatusNotFound
 		w.WriteHeader(statusCode)
 	} else {
-		creds, err := json.Marshal(&metadataCredentials{
+		creds, err := json.Marshal(&MetadataCredentials{
 			Code:            "Success",
 			LastUpdated:     credentials.GeneratedAt,
 			Type:            "AWS-HMAC",

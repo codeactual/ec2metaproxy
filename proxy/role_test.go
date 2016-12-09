@@ -1,11 +1,13 @@
-package proxy
+package proxy_test
 
 import (
 	"testing"
+
+	"github.com/codeactual/ec2metaproxy/proxy"
 )
 
-func TestNewRoleArn(t *testing.T) {
-	arn, err := newRoleArn("arn:aws:iam::123456789012:role/test-role-name")
+func TestNew(t *testing.T) {
+	arn, err := proxy.NewRoleARN("arn:aws:iam::123456789012:role/test-role-name")
 	if err != nil {
 		t.Fatalf("unexpected err: %+v", err)
 	}
@@ -17,8 +19,8 @@ func TestNewRoleArn(t *testing.T) {
 	})
 }
 
-func TestNewRoleArnWithPath(t *testing.T) {
-	arn, err := newRoleArn("arn:aws:iam::123456789012:role/this/is/the/path/test-role-name")
+func TestNewWithPath(t *testing.T) {
+	arn, err := proxy.NewRoleARN("arn:aws:iam::123456789012:role/this/is/the/path/test-role-name")
 	if err != nil {
 		t.Fatalf("unexpected err: %+v", err)
 	}

@@ -1,4 +1,4 @@
-package proxy
+package proxy_test
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 
+	"github.com/codeactual/ec2metaproxy/proxy"
 	"github.com/pkg/errors"
 )
 
@@ -48,7 +49,7 @@ func (r roundTripperStub) RoundTrip(req *http.Request) (*http.Response, error) {
 // The pathSpec argument, ex. "/", is used to create the http.Handle and should match
 // a use case like the one in main.go. The pathReq argument is the path to request.
 // The separation allows us simulate mismatches for cases like 404.
-func stubRequest(pathSpec, pathReq string, config Config, stsSvc *assumeRoleStub, containerSvc containerService, clientIP string) (*httptest.ResponseRecorder, []string, error) {
+func stubRequest(pathSpec, pathReq string, config proxy.Config, stsSvc *assumeRoleStub, containerSvc proxy.ContainerService, clientIP string) (*httptest.ResponseRecorder, []string, error) {
 	l := newLogger()
 
 	req, err := http.NewRequest("GET", pathReq, nil)
@@ -65,13 +66,13 @@ func stubRequest(pathSpec, pathReq string, config Config, stsSvc *assumeRoleStub
 		},
 	}
 
-	p, initErr := New(config, httpClient, stsSvc, containerSvc, l.logger)
+	p, initErr := proxy.New(config, httpClient, stsSvc, containerSvc, l.logger)
 	if initErr != nil {
 		return nil, nil, errors.Wrap(initErr, "failed to create proxy")
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle(pathSpec, RequestID(p))
+	mux.Handle(pathSpec, proxy.RequestID(p))
 
 	recorder := httptest.NewRecorder()
 	p.ServeHTTP(recorder, req)

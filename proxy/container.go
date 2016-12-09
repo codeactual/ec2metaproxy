@@ -2,14 +2,16 @@ package proxy
 
 import "context"
 
-type containerInfo struct {
+// ContainerInfo can identify a specific container and its IAM role/policy.
+type ContainerInfo struct {
 	ID        string
 	Name      string
-	IamRole   roleArn
+	IamRole   RoleARN
 	IamPolicy string
 }
 
-type containerService interface {
-	ContainerForIP(ctx context.Context, containerIP string) (containerInfo, error)
+// ContainerService implementations provide ContainerInfo.
+type ContainerService interface {
+	ContainerForIP(ctx context.Context, containerIP string) (ContainerInfo, error)
 	TypeName() string
 }
