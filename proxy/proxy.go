@@ -209,7 +209,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	}
 
 	if p.config.Verbose {
-		p.log.Printf("HandleCredentials (%s): PROXY RESPONSE ip [%s] path [%s] role [%s] code [%d]", reqID, clientIP, awsURL, roleName, statusCode)
+		p.log.Printf("HandleCredentials (%s): PROXY RESPONSE ip [%s] path [%s] role [%s] subpath [%s] code [%d]", reqID, clientIP, awsURL, roleName, subpath, statusCode)
 	}
 }
 
