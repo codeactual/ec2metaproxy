@@ -74,6 +74,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	clientIP := remoteIP(r.RemoteAddr)
 	reqID := requestIDFromContext(r.Context())
 
+	p.log.Printf("HandleCredentials (%s): PROXY REQUEST ip [%s] url [%s]", reqID, clientIP, r.URL.String())
+
 	match := credsRegex.FindStringSubmatch(r.URL.Path)
 	if match != nil {
 		p.HandleCredentials(MetadataURL, match[1], match[2], p.credsProvider, w, r)
@@ -127,7 +129,7 @@ func (p *Proxy) HandleCredentials(baseURL, apiVersion, subpath string, c *creden
 	awsURL := baseURL + "/" + apiVersion + "/meta-data/iam/security-credentials/"
 
 	if p.config.Verbose {
-		p.log.Printf("HandleCredentials (%s): PROXY REQUEST ip [%s] path [%s]", reqID, clientIP, awsURL)
+		p.log.Printf("HandleCredentials (%s): UPSTREAM REQUEST ip [%s] path [%s]", reqID, clientIP, awsURL)
 	}
 
 	awsReq, err := http.NewRequest("GET", awsURL, nil)
