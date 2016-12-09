@@ -14,9 +14,11 @@ import (
 	"sync/atomic"
 )
 
+type contextKey string
+
 const (
-	requestIDContextKey = "ec2metaproxyReqID"
-	requestIDHeaderKey  = "X-EC2Metaproxy-ID"
+	requestIDContextKey contextKey = "ec2metaproxyReqID"
+	requestIDHeaderKey             = "X-EC2Metaproxy-ID"
 )
 
 var reqIDPrefix string

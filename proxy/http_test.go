@@ -71,11 +71,8 @@ func stubRequest(pathSpec, pathReq string, config proxy.Config, stsSvc *assumeRo
 		return nil, nil, errors.Wrap(initErr, "failed to create proxy")
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle(pathSpec, proxy.RequestID(p))
-
 	recorder := httptest.NewRecorder()
-	p.ServeHTTP(recorder, req)
+	proxy.RequestID(p).ServeHTTP(recorder, req)
 
 	return recorder, l.events, nil
 }

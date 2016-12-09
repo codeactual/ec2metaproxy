@@ -1,7 +1,9 @@
 package proxy_test
 
 import (
+	"fmt"
 	"io/ioutil"
+	"regexp"
 	"testing"
 )
 
@@ -129,6 +131,22 @@ func TestResponse(t *testing.T) {
 
 		if body != defaultProxiedBody {
 			t.Fatalf("expected body [%s], got [%s]", defaultProxiedBody, body)
+		}
+	})
+
+	t.Run("should include request ID", func(t *testing.T) {
+		config := defaultConfig()
+		stsSvc := defaultStsSvcStub()
+		containerSvc := defaultContainerSvcStub()
+		idRe := regexp.MustCompile(`^[0-9a-zA-Z]{10}-\d{6,}$`)
+
+		res, _, err := stubRequest(defaultPathSpec, defaultPathReq, config, stsSvc, containerSvc, defaultIP)
+		fatalOnErr(t, err)
+
+		id := res.Header().Get("X-EC2Metaproxy-ID")
+		fmt.Printf("hedaer: %+v\n", res.Header())
+		if !idRe.MatchString(id) {
+			t.Fatalf("expected [%s] to match regex", id)
 		}
 	})
 }
