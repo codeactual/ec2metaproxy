@@ -39,11 +39,6 @@ type Proxy struct {
 }
 
 // New creates a Proxy instance using the given configuration.
-//
-// logger := log.New(os.Stdout, "ec2metaproxy ", log.LstdFlags|log.LUTC)
-// config := proxy.Config{ ... }
-// p, err := proxy.New(config, sts.New(session.New()), logger)
-//
 func New(config Config, httpClient http.RoundTripper, stsSvc stsiface.STSAPI, containerSvc ContainerService, logger *log.Logger) (*Proxy, error) {
 	if logger == nil {
 		logger = log.New(new(nopWriter), "", log.LstdFlags)
