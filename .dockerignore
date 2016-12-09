@@ -1,0 +1,11 @@
+*.conf
+*.json
+*.md
+*.yml
+.dockerignore
+.gitignore
+Dockerfile.build
+LICENSE
+build
+docs
+scripts

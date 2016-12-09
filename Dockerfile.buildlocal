@@ -1,0 +1,14 @@
+FROM golang:1.7.3-alpine
+
+ARG CGO_ENABLED=0
+
+COPY Dockerfile.run /go/bin/Dockerfile.run
+COPY / ${GOPATH}/src/github.com/codeactual/ec2metaproxy
+
+RUN apk add --no-cache git make \
+    && cd ${GOPATH}/src/github.com/codeactual/ec2metaproxy \
+    && make install \
+    && rm -rf ${GOPATH}/src ${GOPATH}/pkg \
+    && apk del git make
+
+CMD tar -cf - -C ${GOPATH}/bin ec2metaproxy Dockerfile.run

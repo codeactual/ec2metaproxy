@@ -37,11 +37,17 @@ builder:
 	@docker build --rm -t ec2metaproxy:builder --build-arg GIT_REF=$(GIT_REF) --no-cache -f Dockerfile.build .
 	@docker images | grep ec2metaproxy
 
+builder_local:
+	@docker build --rm -t ec2metaproxy:builder --no-cache -f Dockerfile.buildlocal .
+	@docker images | grep ec2metaproxy
+
 runner:
 	@docker run --rm ec2metaproxy:builder  | docker build --rm -t ec2metaproxy:$(TAG) --no-cache -f Dockerfile.run -
 	@docker images | grep ec2metaproxy
 
 docker: builder runner
+
+docker_local: builder_local runner
 
 docker_latest:
 	@GIT_REF=HEAD TAG=latest $(MAKE) -f $(THIS_FILE) docker

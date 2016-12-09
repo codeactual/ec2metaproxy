@@ -63,6 +63,7 @@ Options:
 1. Binary only from current git clone: `make build`
 1. Docker image `ec2metaproxy:latest` from `HEAD`: `make docker_latest`
 1. Docker image with [customization](docs/build.md): `GIT_REF=efd25a2 TAG=1.0 make docker`
+1. Docker image from current git clone: `TAG=testing make docker_local`
 
 ## Create a JSON config file
 
