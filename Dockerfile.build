@@ -13,6 +13,7 @@ RUN if [ -z "${GIT_REF}" ]; then echo -e "\n--build-arg GIT_REF=<ref> is require
     && cd ec2metaproxy \
     && git checkout ${GIT_REF} \
     && make install \
-    && rm -rf ${GOPATH}/src ${GOPATH}/pkg
+    && rm -rf ${GOPATH}/src ${GOPATH}/pkg \
+    && apk del git make
 
 CMD tar -cf - -C ${GOPATH}/bin ec2metaproxy Dockerfile.run
