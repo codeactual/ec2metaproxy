@@ -1,7 +1,6 @@
 package proxy_test
 
 import (
-	"fmt"
 	"io/ioutil"
 	"regexp"
 	"testing"
@@ -144,7 +143,6 @@ func TestResponse(t *testing.T) {
 		fatalOnErr(t, err)
 
 		id := res.Header().Get("X-EC2Metaproxy-ID")
-		fmt.Printf("hedaer: %+v\n", res.Header())
 		if !idRe.MatchString(id) {
 			t.Fatalf("expected [%s] to match regex", id)
 		}
